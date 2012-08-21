@@ -127,7 +127,7 @@ struct execute_work {
 	.timer = TIMER_INITIALIZER(NULL, 0, 0),			\
 	}
 
-#define __DEFERRED_WORK_INITIALIZER(n, f) {			\
+#define __DEFERRABLE_WORK_INITIALIZER(n, f) {        \
 	.work = __WORK_INITIALIZER((n).work, (f)),		\
 	.timer = TIMER_DEFERRED_INITIALIZER(NULL, 0, 0),	\
 	}
@@ -138,8 +138,8 @@ struct execute_work {
 #define DECLARE_DELAYED_WORK(n, f)				\
 	struct delayed_work n = __DELAYED_WORK_INITIALIZER(n, f)
 
-#define DECLARE_DEFERRED_WORK(n, f)				\
-	struct delayed_work n = __DEFERRED_WORK_INITIALIZER(n, f)
+#define DECLARE_DEFERRABLE_WORK(n, f)          \
+	struct delayed_work n = __DEFERRABLE_WORK_INITIALIZER(n, f)
 
 /*
  * initialize a work item's function pointer
@@ -215,7 +215,7 @@ static inline unsigned int work_static(struct work_struct *work) { return 0; }
 		init_timer_on_stack(&(_work)->timer);		\
 	} while (0)
 
-#define INIT_DELAYED_WORK_DEFERRABLE(_work, _func)		\
+#define INIT_DEFERRABLE_WORK(_work, _func)        \
 	do {							\
 		INIT_WORK(&(_work)->work, (_func));		\
 		init_timer_deferrable(&(_work)->timer);		\
