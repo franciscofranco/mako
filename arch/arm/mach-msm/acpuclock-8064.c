@@ -110,8 +110,8 @@ static struct msm_bus_scale_pdata bus_scale_data __initdata = {
 	.name = "acpuclk-8064",
 };
 
-static struct l2_level l2_freq_tbl[] __initdata __initdata = {
-	[0]  = { {  384000, PLL_8, 0, 0x00 }, 1050000, 1050000, 1 },
+static struct l2_level l2_freq_tbl[] __initdata = {
+	[0]  = { {  384000, PLL_8, 0, 0x00 },  950000, 1050000, 1 },
 	[1]  = { {  432000, HFPLL, 2, 0x20 }, 1050000, 1050000, 2 },
 	[2]  = { {  486000, HFPLL, 2, 0x24 }, 1050000, 1050000, 2 },
 	[3]  = { {  540000, HFPLL, 2, 0x28 }, 1050000, 1050000, 2 },
