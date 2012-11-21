@@ -1374,7 +1374,7 @@ err_out:
 	return -ENODEV;
 }
 
-static int __devexit powernowk8_cpu_exit(struct cpufreq_policy *pol)
+static int powernowk8_cpu_exit(struct cpufreq_policy *pol)
 {
 	struct powernow_k8_data *data = per_cpu(powernow_data, pol->cpu);
 
