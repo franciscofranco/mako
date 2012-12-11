@@ -122,7 +122,7 @@ static int msm_cpufreq_target(struct cpufreq_policy *policy,
 		return -ENOMEM;
 #endif
 
-	mutex_lock(&per_cpu(cpufreq_suspend, policy->cpu).suspend_mutex);
+	//mutex_lock(&per_cpu(cpufreq_suspend, policy->cpu).suspend_mutex);
 
 	if (per_cpu(cpufreq_suspend, policy->cpu).device_suspended) {
 		pr_debug("cpufreq: cpu%d scheduling frequency change "
@@ -172,7 +172,7 @@ done:
 #ifdef CONFIG_SMP
 	free_cpumask_var(mask);
 #endif
-	mutex_unlock(&per_cpu(cpufreq_suspend, policy->cpu).suspend_mutex);
+	//mutex_unlock(&per_cpu(cpufreq_suspend, policy->cpu).suspend_mutex);
 	return ret;
 }
 
