@@ -53,12 +53,19 @@
  * SAMPLING_PERIODS * MIN_SAMPLING_RATE is the minimum
  * load history which will be averaged
  */
-#define SAMPLING_PERIODS	12
+#define SAMPLING_PERIODS 	12
 #define INDEX_MAX_VALUE		(SAMPLING_PERIODS - 1)
 /*
  * MIN_SAMPLING_RATE is scaled based on num_online_cpus()
  */
 #define MIN_SAMPLING_RATE	msecs_to_jiffies(20)
+
+/* Control flags */
+unsigned char flags;
+#define HOTPLUG_DISABLED	(1 << 0)
+#define HOTPLUG_PAUSED		(1 << 1)
+#define BOOSTPULSE_ACTIVE	(1 << 2)
+#define EARLYSUSPEND_ACTIVE	(1 << 3)
 
 /*
  * Load defines:
@@ -68,16 +75,14 @@
  * DISABLE is the load at which a CPU is disabled
  * These two are scaled based on num_online_cpus()
  */
-#define ENABLE_ALL_LOAD_THRESHOLD	(125 * CPUS_AVAILABLE)
-#define ENABLE_LOAD_THRESHOLD		280
-#define DISABLE_LOAD_THRESHOLD		80
 
-/* Control flags */
-unsigned char flags;
-#define HOTPLUG_DISABLED	(1 << 0)
-#define HOTPLUG_PAUSED		(1 << 1)
-#define BOOSTPULSE_ACTIVE	(1 << 2)
-#define EARLYSUSPEND_ACTIVE	(1 << 3)
+static unsigned int enable_all_load_threshold = 125;
+static unsigned int enable_load_threshold = 280;
+static unsigned int disable_load_threshold = 80;
+
+module_param(enable_all_load_threshold, int, 0775);
+module_param(enable_load_threshold, int, 0775);
+module_param(disable_load_threshold, int, 0775);
 
 struct delayed_work hotplug_decision_work;
 struct delayed_work hotplug_unpause_work;
@@ -100,8 +105,9 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 
 	online_cpus = num_online_cpus();
 	available_cpus = CPUS_AVAILABLE;
-	disable_load = DISABLE_LOAD_THRESHOLD * online_cpus;
-	enable_load = ENABLE_LOAD_THRESHOLD * online_cpus;
+	disable_load = disable_load_threshold * online_cpus;
+	enable_load = enable_load_threshold * online_cpus;
+	enable_all_load_threshold *= available_cpus; 
 	/*
 	 * Multiply nr_running() by 100 so we don't have to
 	 * use fp division to get the average.
@@ -153,7 +159,7 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 #endif
 
 	if (likely(!(flags & HOTPLUG_DISABLED))) {
-		if (unlikely((avg_running >= ENABLE_ALL_LOAD_THRESHOLD) && (online_cpus < available_cpus))) {
+		if (unlikely((avg_running >= enable_all_load_threshold) && (online_cpus < available_cpus))) {
 			pr_info("auto_hotplug: Onlining all CPUs, avg running: %d\n", avg_running);
 			/*
 			 * Flush any delayed offlining work from the workqueue.
