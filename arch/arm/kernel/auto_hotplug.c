@@ -76,7 +76,7 @@ unsigned char flags;
  * These two are scaled based on num_online_cpus()
  */
 
-static unsigned int enable_all_load_threshold = 125;
+static unsigned int enable_all_load_threshold = 500;
 static unsigned int enable_load_threshold = 280;
 static unsigned int disable_load_threshold = 80;
 
@@ -107,7 +107,6 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 	available_cpus = CPUS_AVAILABLE;
 	disable_load = disable_load_threshold * online_cpus;
 	enable_load = enable_load_threshold * online_cpus;
-	enable_all_load_threshold *= available_cpus; 
 	/*
 	 * Multiply nr_running() by 100 so we don't have to
 	 * use fp division to get the average.
