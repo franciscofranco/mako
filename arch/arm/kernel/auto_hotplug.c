@@ -186,8 +186,8 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 			/* Only queue a cpu_down() if there isn't one already pending */
 			if (!(delayed_work_pending(&hotplug_offline_work))) {
 				if (online_cpus == 2 && avg_running < (disable_load/2)) {
-					pr_info("auto_hotplug: Online CPUs = 2; Offlining CPU in 3 seconds, avg running: %d\n", avg_running);
-					schedule_delayed_work_on(0, &hotplug_offline_work, HZ * 2);
+					pr_info("auto_hotplug: Online CPUs = 2; Offlining CPU, avg running: %d\n", avg_running);
+					schedule_delayed_work_on(0, &hotplug_offline_work, HZ);
 				} else if (online_cpus > 2) {
 					pr_info("auto_hotplug: Offlining CPU, avg running: %d\n", avg_running);
 					schedule_delayed_work_on(0, &hotplug_offline_work, HZ);
