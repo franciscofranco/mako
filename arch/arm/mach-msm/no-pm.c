@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2010-2011, 2013 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -46,3 +46,4 @@ int msm_pm_idle_enter(enum msm_pm_sleep_mode sleep_mode)
 	return -ENOSYS;
 }
 
+void msm_pm_enable_retention(bool enable) {}
