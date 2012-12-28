@@ -107,6 +107,7 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 	available_cpus = CPUS_AVAILABLE;
 	disable_load = disable_load_threshold * online_cpus;
 	enable_load = enable_load_threshold * online_cpus;
+	
 	/*
 	 * Multiply nr_running() by 100 so we don't have to
 	 * use fp division to get the average.
@@ -182,14 +183,10 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 				cancel_delayed_work(&hotplug_offline_work);
 			schedule_work(&hotplug_online_single_work);
 			return;
-		} else if (avg_running <= disable_load) {
+		} else if (avg_running <= (disable_load/2) && online_cpus > 1) {
 			/* Only queue a cpu_down() if there isn't one already pending */
 			if (!(delayed_work_pending(&hotplug_offline_work))) {
-				if (online_cpus == 2 && avg_running < (disable_load/2)) {
-					pr_info("auto_hotplug: Online CPUs = 2; Offlining CPU, avg running: %d\n", avg_running);
-					flags |= HOTPLUG_PAUSED;
-					schedule_delayed_work_on(0, &hotplug_offline_work, MIN_SAMPLING_RATE);
-				} else if (online_cpus > 2) {
+				if (!(flags & BOOSTPULSE_ACTIVE)) {
 					pr_info("auto_hotplug: Offlining CPU, avg running: %d\n", avg_running);
 					schedule_delayed_work_on(0, &hotplug_offline_work, HZ);
 				}
@@ -307,10 +304,11 @@ inline void hotplug_boostpulse(void)
 		 * whilst the user is interacting with the device.
 		 */
 		if (likely(num_online_cpus() < 2)) {
+			pr_info("User is interacting with the device, make sure 2 CPU's are active.\n");
 			cancel_delayed_work_sync(&hotplug_offline_work);
 			flags |= HOTPLUG_PAUSED;
 			schedule_work(&hotplug_online_single_work);
-			schedule_delayed_work(&hotplug_unpause_work, HZ * 5);
+			schedule_delayed_work(&hotplug_unpause_work, HZ * 2);
 		} else {
 			pr_info("auto_hotplug: %s: %d CPUs online\n", __func__, num_online_cpus());
 			if (delayed_work_pending(&hotplug_offline_work)) {
