@@ -53,7 +53,7 @@
  * SAMPLING_PERIODS * MIN_SAMPLING_RATE is the minimum
  * load history which will be averaged
  */
-#define SAMPLING_PERIODS 	12
+#define SAMPLING_PERIODS 	15
 #define INDEX_MAX_VALUE		(SAMPLING_PERIODS - 1)
 /*
  * MIN_SAMPLING_RATE is scaled based on num_online_cpus()
@@ -183,18 +183,18 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 				cancel_delayed_work(&hotplug_offline_work);
 			schedule_work(&hotplug_online_single_work);
 			return;
-		} else if (avg_running <= (disable_load/2) && online_cpus > 1) {
+		} else if (avg_running < disable_load && online_cpus > 1) {//(disable_load/2) && online_cpus > 1) {
 			/* Only queue a cpu_down() if there isn't one already pending */
 			if (!(delayed_work_pending(&hotplug_offline_work))) {
 				if (!(flags & BOOSTPULSE_ACTIVE)) {
 					pr_info("auto_hotplug: Offlining CPU, avg running: %d\n", avg_running);
 					schedule_delayed_work_on(0, &hotplug_offline_work, HZ);
 				}
-			}
-			/* If boostpulse is active, clear the flags */
-			if (flags & BOOSTPULSE_ACTIVE) {
-				flags &= ~BOOSTPULSE_ACTIVE;
-				pr_info("auto_hotplug: Clearing boostpulse flags\n");
+				/* If boostpulse is active, clear the flags */
+				else if(flags & BOOSTPULSE_ACTIVE) {
+					flags &= ~BOOSTPULSE_ACTIVE;
+					pr_info("auto_hotplug: Clearing boostpulse flags\n");
+				}
 			}
 		}
 	}
@@ -207,7 +207,6 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 	pr_info("sampling_rate is: %d\n", jiffies_to_msecs(sampling_rate));
 #endif
 	schedule_delayed_work_on(0, &hotplug_decision_work, sampling_rate);
-
 }
 
 static void __cpuinit hotplug_online_all_work_fn(struct work_struct *work)
@@ -222,7 +221,7 @@ static void __cpuinit hotplug_online_all_work_fn(struct work_struct *work)
 	/*
 	 * Pause for 2 seconds before even considering offlining a CPU
 	 */
-	schedule_delayed_work(&hotplug_unpause_work, HZ * 5);
+	schedule_delayed_work(&hotplug_unpause_work, HZ * 2);
 	schedule_delayed_work_on(0, &hotplug_decision_work, MIN_SAMPLING_RATE);
 }
 
@@ -315,7 +314,7 @@ inline void hotplug_boostpulse(void)
 				pr_info("auto_hotplug: %s: Cancelling hotplug_offline_work\n", __func__);
 				cancel_delayed_work(&hotplug_offline_work);
 				flags |= HOTPLUG_PAUSED;
-				schedule_delayed_work(&hotplug_unpause_work, HZ * 5);
+				schedule_delayed_work(&hotplug_unpause_work, HZ * 2);
 				schedule_delayed_work_on(0, &hotplug_decision_work, MIN_SAMPLING_RATE);
 			}
 		}
