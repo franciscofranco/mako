@@ -76,7 +76,7 @@ unsigned char flags;
  * These two are scaled based on num_online_cpus()
  */
 
-static unsigned int enable_all_load_threshold = 500;
+static unsigned int enable_all_load_threshold = 600;
 static unsigned int enable_load_threshold = 250;
 static unsigned int disable_load_threshold = 125;
 
