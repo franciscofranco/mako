@@ -3,7 +3,6 @@
 
 #include <linux/ioport.h>
 #include <linux/clocksource.h>
-#include <asm/errno.h>
 
 struct arch_timer {
 	struct resource	res[3];
