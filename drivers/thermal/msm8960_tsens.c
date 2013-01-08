@@ -685,6 +685,7 @@ static irqreturn_t tsens_isr(int irq, void *data)
 static void tsens8960_sensor_mode_init(void)
 {
 	unsigned int reg_cntl = 0;
+        unsigned int reg = 0, mask = 0, i = 0;
 
 	reg_cntl = readl_relaxed(TSENS_CNTL_ADDR);
 	if (tmdev->hw_type == MSM_8960 || tmdev->hw_type == MDM_9615 ||
@@ -692,7 +693,32 @@ static void tsens8960_sensor_mode_init(void)
 		writel_relaxed(reg_cntl &
 				~((((1 << tmdev->tsens_num_sensor) - 1) >> 1)
 				<< (TSENS_SENSOR0_SHIFT + 1)), TSENS_CNTL_ADDR);
-		tmdev->sensor[TSENS_MAIN_SENSOR].mode = THERMAL_DEVICE_ENABLED;
+                tmdev->sensor[TSENS_MAIN_SENSOR].mode = THERMAL_DEVICE_ENABLED;
+
+                for (i = 1; i < tmdev->tsens_num_sensor; i++) {
+                        if (tmdev->sensor[i].mode == THERMAL_DEVICE_ENABLED)
+                                continue;
+
+		        reg = readl_relaxed(TSENS_CNTL_ADDR);
+		        mask = 1 << (i + TSENS_SENSOR0_SHIFT);
+			if ((mask != SENSOR0_EN) && !(reg & SENSOR0_EN)) {
+				pr_info("Main sensor not enabled\n");
+				return;
+			}
+			writel_relaxed(reg | TSENS_SW_RST, TSENS_CNTL_ADDR);
+			if (tmdev->hw_type == MSM_8960 ||
+				tmdev->hw_type == MDM_9615 ||
+				tmdev->hw_type == APQ_8064)
+				reg |= mask | TSENS_8960_SLP_CLK_ENA
+							| TSENS_EN;
+			else
+				reg |= mask | TSENS_8660_SLP_CLK_ENA
+							| TSENS_EN;
+			tmdev->prev_reading_avail = false;
+		        writel_relaxed(reg, TSENS_CNTL_ADDR);
+
+		        tmdev->sensor[i].mode = THERMAL_DEVICE_ENABLED;
+                }
 	}
 }
 
