@@ -156,8 +156,6 @@
 
 #define CHARGER_CONNECTED               0x20
 
-void hotplug_boostpulse(void);
-
 static inline int get_highest_id(u32 fs)
 {
 	int id = 10;
@@ -261,7 +259,6 @@ int synaptics_ts_get_data(struct i2c_client *client, struct t_data* data,
 		for (id = 0; id < ts->pdata->caps->max_id; id++) {
 			switch (((finger_status >> (id*2)) & 0x3)) {
 			case FINGER_STATE_PRESENT_VALID:
-				hotplug_boostpulse();
 				data[id].state = ABS_PRESS;
 				data[id].x_position = TS_SNTS_GET_X_POSITION(
 					ts->ts_data.finger.finger_reg[id][REG_X_POSITION],
