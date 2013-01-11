@@ -843,28 +843,19 @@ static void touch_work_func(struct work_struct *work)
 
 	touch_input_report(ts);
 	
-	//pr_info("STATE: %d\n X: %d\n Y:%d\n", ts->ts_data.curr_data[0].state, ts->ts_data.curr_data[0].x_position, ts->ts_data.curr_data[0].y_position);
 	if (ts->ts_data.curr_data[0].state == ABS_PRESS) {
 		if(!xy_lock) {
-			xy_lock = true;
 			x = ts->ts_data.curr_data[0].x_position;
 			y = ts->ts_data.curr_data[0].y_position;
+			xy_lock = true;
 		}
 			
-		if (x > 0 || y > 0) {
-			if (ts->ts_data.curr_data[0].x_position > (x + 100) || ts->ts_data.curr_data[0].x_position < (x - 100)) {
-				if (!flag) {
-					//pr_info("X: %d, X_post: %d,\n", x, ts->ts_data.curr_data[0].x_position);
-					hotplug_boostpulse();
-					flag = true;
-				}
-			} else if (ts->ts_data.curr_data[0].y_position > (y + 100) || ts->ts_data.curr_data[0].y_position < (y - 100)) {
-				if (!flag) {
-					//pr_info("Y: %d, Y_post: %d,\n", y, ts->ts_data.curr_data[0].y_position);
-					hotplug_boostpulse();
-					flag = true;
-				}
-			}
+		if (ts->ts_data.curr_data[0].x_position > (x + 100) || ts->ts_data.curr_data[0].x_position < (x - 100)) {
+			hotplug_boostpulse();
+			flag = true;
+		} else if (ts->ts_data.curr_data[0].y_position > (y + 100) || ts->ts_data.curr_data[0].y_position < (y - 100)) {
+			hotplug_boostpulse();
+			flag = true;
 		}
 	} else {
 		x = 0;
