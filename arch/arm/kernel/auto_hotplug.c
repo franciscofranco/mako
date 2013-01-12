@@ -75,7 +75,7 @@ unsigned char flags;
  * These two are scaled based on num_online_cpus()
  */
 
-static unsigned int enable_all_load_threshold __read_mostly = 500;
+static unsigned int enable_all_load_threshold __read_mostly = 400;
 static unsigned int enable_load_threshold __read_mostly = 275;
 static unsigned int disable_load_threshold __read_mostly = 125;
 
@@ -91,10 +91,13 @@ struct delayed_work hotplug_offline_work;
 struct work_struct hotplug_offline_all_work;
 struct work_struct hotplug_boost_online_work;
 
+static unsigned int history[SAMPLING_PERIODS];
+static unsigned int index;
+
 static void hotplug_decision_work_fn(struct work_struct *work)
 {
-	unsigned int disable_load, enable_load, avg_running = 0;
-	unsigned int online_cpus, available_cpus;
+	unsigned int running, disable_load, enable_load, avg_running = 0;
+	unsigned int online_cpus, available_cpus, i, j;
 #if DEBUG
 	unsigned int k;
 #endif
@@ -104,6 +107,9 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 	disable_load = disable_load_threshold * online_cpus;
 	enable_load = enable_load_threshold * online_cpus;
 
+	running = nr_running() * 100;
+	history[index] = running;
+
 #if DEBUG
 	pr_info("online_cpus is: %d\n", online_cpus);
 	pr_info("enable_load is: %d\n", enable_load);
@@ -111,6 +117,25 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 	pr_info("index is: %d\n", index);
 	pr_info("running is: %d\n", running);
 #endif
+
+	/*
+	 * Use a circular buffer to calculate the average load
+	 * over the sampling periods.
+	 * This will absorb load spikes of short duration where
+	 * we don't want additional cores to be onlined because
+	 * the cpufreq driver should take care of those load spikes.
+	 */
+	for (i = 0, j = index; i < SAMPLING_PERIODS; i++, j--) {
+		avg_running += history[j];
+		if (unlikely(j == 0))
+			j = INDEX_MAX_VALUE;
+	}
+
+	/*
+	 * If we are at the end of the buffer, return to the beginning.
+	 */
+	if (unlikely(index++ == INDEX_MAX_VALUE))
+		index = 0;
 
 #if DEBUG
 	pr_info("array contents: ");
@@ -121,14 +146,14 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 	pr_info("avg_running before division: %d\n", avg_running);
 #endif
 
-	avg_running = avg_nr_running() / SAMPLING_PERIODS;
+	avg_running = avg_running / SAMPLING_PERIODS;
 
 #if DEBUG
 	pr_info("average_running is: %d\n", avg_running);
 #endif
 
 	if (!(flags & HOTPLUG_DISABLED)) {
-		if (avg_running >= enable_all_load_threshold) {
+		if (avg_running > enable_all_load_threshold && online_cpus < available_cpus) {
 			//pr_info("auto_hotplug: Onlining all CPUs, avg running: %d\n", avg_running);
 			/*
 			 * Flush any delayed offlining work from the workqueue.
@@ -141,8 +166,6 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 			flags |= HOTPLUG_PAUSED;
 			if (delayed_work_pending(&hotplug_offline_work))
 				cancel_delayed_work(&hotplug_offline_work);
-			if (online_cpus == available_cpus)
-				return;
 			schedule_work(&hotplug_online_all_work);
 			return;
 		} else if (flags & HOTPLUG_PAUSED) {
@@ -172,7 +195,7 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 	schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE);
 }
 
-static void __cpuinit hotplug_online_all_work_fn(struct work_struct *work)
+static void hotplug_online_all_work_fn(struct work_struct *work)
 {
 	int cpu;
 	for_each_possible_cpu(cpu) {
@@ -199,7 +222,7 @@ static void hotplug_offline_all_work_fn(struct work_struct *work)
 	}
 }
 
-static void __cpuinit hotplug_online_single_work_fn(struct work_struct *work)
+static void hotplug_online_single_work_fn(struct work_struct *work)
 {
 	int cpu;
 
