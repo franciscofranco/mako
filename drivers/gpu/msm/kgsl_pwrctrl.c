@@ -35,6 +35,10 @@
 #define UPDATE_BUSY		50
 
 #define SAMPLING_PERIODS 	15
+#define INDEX_MAX_VALUE		(SAMPLING_PERIODS - 1)
+
+static unsigned int history[SAMPLING_PERIODS];
+static unsigned int index;
 
 struct clk_pair {
 	const char *name;
@@ -92,7 +96,8 @@ void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
 				unsigned int new_level)
 {
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
-	unsigned int avg_running = 0;
+	unsigned int running, avg_running = 0;
+	unsigned int i, j;
 	if (new_level < (pwr->num_pwrlevels - 1) &&
 		new_level >= pwr->thermal_pwrlevel &&
 		new_level != pwr->active_pwrlevel) {
@@ -105,17 +110,27 @@ void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
 		/* Finally set active level */
 		pwr->active_pwrlevel = new_level;
 			
-		avg_running = avg_nr_running() / SAMPLING_PERIODS;
+		running = nr_running() * 100;
+		history[index] = running;
+		
+		for (i = 0, j = index; i < SAMPLING_PERIODS; i++, j--) {
+			avg_running += history[j];
+			if (unlikely(j == 0))
+				j = INDEX_MAX_VALUE;
+			}
+
+		if (unlikely(index++ == INDEX_MAX_VALUE))
+			index = 0;
 		
 		if ((test_bit(KGSL_PWRFLAGS_CLK_ON, &pwr->power_flags)) ||
 			(device->state == KGSL_STATE_NAP)) {
-			if (avg_running < 250) {
+			if (avg_running < 200) {
 				clk_set_rate(pwr->grp_clks[0], 128000000);
 			}
-			else if (avg_running > 325 && avg_running < 400) {
+			else if (avg_running > 275 && avg_running < 400) {
 				clk_set_rate(pwr->grp_clks[0], 200000000);
 			}
-			else if (avg_running >= 400) {
+			else if (avg_running >= 375) {
 				clk_set_rate(pwr->grp_clks[0], 400000000);
 			}
 		}
