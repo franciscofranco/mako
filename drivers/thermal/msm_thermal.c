@@ -27,7 +27,7 @@
 
 #define POLLING_DELAY 100
 
-unsigned int temp_threshold = 60;
+unsigned int temp_threshold = 65;
 module_param(temp_threshold, int, 0755);
 
 static int enabled;
@@ -35,10 +35,13 @@ static struct msm_thermal_data msm_thermal_info;
 static uint32_t limited_max_freq = MSM_CPUFREQ_NO_LIMIT;
 static struct delayed_work check_temp_work;
 
-static int limit_idx;
-static int limit_idx_low;
-static int limit_idx_high;
+static unsigned int limit_idx;
+static unsigned int limit_idx_low;
+static unsigned int limit_idx_high;
+static unsigned int max_frequency;
+static bool throttling = false;
 static struct cpufreq_frequency_table *table;
+struct cpufreq_policy *policy = NULL;
 
 static int msm_thermal_get_freq_table(void)
 {
@@ -52,10 +55,10 @@ static int msm_thermal_get_freq_table(void)
 		goto fail;
 	}
 
-	while (table[i].frequency != CPUFREQ_TABLE_END)
+	while (table[i].frequency != max_frequency)
 		i++;
 
-	limit_idx_low = 0;
+	limit_idx_low = 6;
 	limit_idx_high = limit_idx = i - 1;
 	BUG_ON(limit_idx_high <= 0 || limit_idx_high <= limit_idx_low);
 fail:
@@ -74,8 +77,10 @@ static int update_cpu_max_freq(int cpu, uint32_t max_freq)
 	if (max_freq != MSM_CPUFREQ_NO_LIMIT)
 		pr_info("msm_thermal: Limiting cpu%d max frequency to %d\n",
 				cpu, max_freq);
-	else
+	else {
 		pr_info("msm_thermal: Max frequency reset for cpu%d\n", cpu);
+		throttling = false;
+	}
 
 	ret = cpufreq_update_policy(cpu);
 
@@ -90,6 +95,7 @@ static void check_temp(struct work_struct *work)
 	uint32_t max_freq = limited_max_freq;
 	int cpu = 0;
 	int ret = 0;
+	policy = cpufreq_cpu_get(0);
 
 	tsens_dev.sensor_num = msm_thermal_info.sensor_id;
 	ret = tsens_get_temp(&tsens_dev, &temp);
@@ -108,24 +114,24 @@ static void check_temp(struct work_struct *work)
 	}
 
 	if (temp >= temp_threshold) {
+		if (!throttling) {
+			max_frequency = policy->max;
+			throttling = true;
+		}
+		
 		if (limit_idx == limit_idx_low)
 			goto reschedule;
 
-		limit_idx -= msm_thermal_info.freq_step;
+		limit_idx = limit_idx_low;
 		if (limit_idx < limit_idx_low)
 			limit_idx = limit_idx_low;
 		max_freq = table[limit_idx].frequency;
-	} else if (temp < temp_threshold -
-		 msm_thermal_info.temp_hysteresis_degC) {
+	} else if (temp < (temp_threshold - 5)) {
 		if (limit_idx == limit_idx_high)
 			goto reschedule;
 
-		limit_idx += msm_thermal_info.freq_step;
-		if (limit_idx >= limit_idx_high) {
-			limit_idx = limit_idx_high;
-			max_freq = MSM_CPUFREQ_NO_LIMIT;
-		} else
-			max_freq = table[limit_idx].frequency;
+		limit_idx = limit_idx_high;
+		max_freq = max_frequency;
 	}
 	if (max_freq == limited_max_freq)
 		goto reschedule;
