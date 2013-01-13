@@ -139,7 +139,6 @@ config ARCH_MSM8X60
 	select MULTI_IRQ_HANDLER
 	select MSM_MULTIMEDIA_USE_ION
 	select MSM_PM8X60 if PM
-	select MSM_RUN_QUEUE_STATS
 	select ARM_HAS_SG_CHAIN
 
 config ARCH_MSM8960
@@ -173,7 +172,6 @@ config ARCH_MSM8960
 	select MULTI_IRQ_HANDLER
 	select MSM_PM8X60 if PM
 	select HOLES_IN_ZONE if SPARSEMEM
-	select MSM_RUN_QUEUE_STATS
 	select ARM_HAS_SG_CHAIN
 	select MSM_KRAIT_WFE_FIXUP
 
@@ -259,7 +257,6 @@ config ARCH_MSM8974
 	select MSM_AUDIO_QDSP6V2 if SND_SOC
 	select MSM_RPM_REGULATOR_SMD
 	select ARM_HAS_SG_CHAIN
-	select MSM_RUN_QUEUE_STATS
 
 config ARCH_FSM9XXX
 	bool "FSM9XXX"
@@ -303,7 +300,6 @@ config ARCH_MSM8625
 	select ARCH_MSM_CORTEXMP
 	select MULTI_IRQ_HANDLER
 	select ARM_TICKET_LOCKS
-	select MSM_RUN_QUEUE_STATS
 	select MIGHT_HAVE_CACHE_L2X0
 
 config ARCH_MSM9625
@@ -2156,6 +2152,7 @@ config MSM_SLEEP_STATS_DEVICE
 config MSM_RUN_QUEUE_STATS
 	bool "Enable collection and exporting of MSM Run Queue stats to userspace"
 	depends on (MSM_SOC_REV_A || ARCH_MSM8X60 || ARCH_MSM8960)
+	default n
 	help
 	 This option enalbes statistics collection on Run Queue. A daemon
          in user mode, called MPDecision will be using this data to decide
