@@ -124,13 +124,9 @@ void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
 		
 		if ((test_bit(KGSL_PWRFLAGS_CLK_ON, &pwr->power_flags)) ||
 			(device->state == KGSL_STATE_NAP)) {
-			if (avg_running < 200) {
+			if (avg_running < 375 && clk_get_rate(pwr->grp_clks[0]) > 128000000) {
 				clk_set_rate(pwr->grp_clks[0], 128000000);
-			}
-			else if (avg_running > 275 && avg_running < 375) {
-				clk_set_rate(pwr->grp_clks[0], 200000000);
-			}
-			else if (avg_running >= 375) {
+			} else if (avg_running >= 375 && clk_get_rate(pwr->grp_clks[0]) < 128000000) {
 				clk_set_rate(pwr->grp_clks[0], 400000000);
 			}
 		}
