@@ -127,7 +127,7 @@ void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
 			if (avg_running < 200) {
 				clk_set_rate(pwr->grp_clks[0], 128000000);
 			}
-			else if (avg_running > 275 && avg_running < 375) {
+			else if (avg_running > 275 && avg_running < 400) {
 				clk_set_rate(pwr->grp_clks[0], 200000000);
 			}
 			else if (avg_running >= 375) {
