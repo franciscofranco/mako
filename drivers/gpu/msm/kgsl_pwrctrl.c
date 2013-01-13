@@ -18,7 +18,6 @@
 #include <mach/msm_iomap.h>
 #include <mach/msm_bus.h>
 #include <linux/ktime.h>
-#include <linux/sched.h>
 
 #include "kgsl.h"
 #include "kgsl_pwrscale.h"
@@ -33,8 +32,6 @@
 #define GPU_SWFI_LATENCY	3
 #define UPDATE_BUSY_VAL		1000000
 #define UPDATE_BUSY		50
-
-#define SAMPLING_PERIODS 	15
 
 struct clk_pair {
 	const char *name;
@@ -92,31 +89,34 @@ void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
 				unsigned int new_level)
 {
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
-	unsigned int avg_running = 0;
 	if (new_level < (pwr->num_pwrlevels - 1) &&
 		new_level >= pwr->thermal_pwrlevel &&
 		new_level != pwr->active_pwrlevel) {
 		struct kgsl_pwrlevel *pwrlevel = &pwr->pwrlevels[new_level];
-		//int diff = new_level - pwr->active_pwrlevel;
-		//int d = (diff > 0) ? 1 : -1;
-		//int level = pwr->active_pwrlevel;
+		int diff = new_level - pwr->active_pwrlevel;
+		int d = (diff > 0) ? 1 : -1;
+		int level = pwr->active_pwrlevel;
 		/* Update the clock stats */
 		update_clk_statistics(device, true);
 		/* Finally set active level */
 		pwr->active_pwrlevel = new_level;
-			
-		avg_running = avg_nr_running() / SAMPLING_PERIODS;
-		
 		if ((test_bit(KGSL_PWRFLAGS_CLK_ON, &pwr->power_flags)) ||
 			(device->state == KGSL_STATE_NAP)) {
-			if (avg_running < 250) {
-				clk_set_rate(pwr->grp_clks[0], 128000000);
-			}
-			else if (avg_running > 325 && avg_running < 400) {
-				clk_set_rate(pwr->grp_clks[0], 200000000);
-			}
-			else if (avg_running >= 400) {
-				clk_set_rate(pwr->grp_clks[0], 400000000);
+			/*
+			 * On some platforms, instability is caused on
+			 * changing clock freq when the core is busy.
+			 * Idle the gpu core before changing the clock freq.
+			 */
+			if (pwr->idle_needed == true)
+				device->ftbl->idle(device);
+
+			/* Don't shift by more than one level at a time to
+			 * avoid glitches.
+			 */
+			while (level != new_level) {
+				level += d;
+				clk_set_rate(pwr->grp_clks[0],
+						pwr->pwrlevels[level].gpu_freq);
 			}
 		}
 		if (test_bit(KGSL_PWRFLAGS_AXI_ON, &pwr->power_flags)) {
@@ -170,6 +170,7 @@ static int __gpuclk_store(int max, struct device *dev,
 		kgsl_pwrctrl_pwrlevel_change(device, pwr->thermal_pwrlevel);
 	else if (!max)
 		kgsl_pwrctrl_pwrlevel_change(device, i);
+
 done:
 	mutex_unlock(&device->mutex);
 	return count;
