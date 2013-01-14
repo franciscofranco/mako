@@ -1,5 +1,7 @@
 /* Copyright (c) 2012, Will Tisdale <willtisdale@gmail.com>. All rights reserved.
  *
+ * Modified for Mako and Grouper, Francisco Franco <franciscofranco.1990@gmail.com>. All rights reserved.
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
  * only version 2 as published by the Free Software Foundation.
@@ -24,7 +26,9 @@
  * event by calling void hotplug_boostpulse(void)
  *
  * Not recommended for use with OMAP4460 due to the potential for lockups
- * whilst hotplugging.
+ * whilst hotplugging - locks up because the SoC requires the hardware to	
+ * be hotpluged in a certain special order otherwise it will probably	
+ * deadlock or simply trigger the watchdog and reboot. 
  */
 
 #include <linux/kernel.h>
@@ -172,7 +176,6 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 			schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE);
 			return;
 		} else if ((avg_running >= enable_load) && (online_cpus < available_cpus)) {
-			//pr_info("auto_hotplug: Onlining single CPU, avg running: %d\n", avg_running);
 			if (delayed_work_pending(&hotplug_offline_work))
 				cancel_delayed_work(&hotplug_offline_work);
 			schedule_work(&hotplug_online_single_work);
@@ -181,9 +184,7 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 			/* Only queue a cpu_down() if there isn't one already pending */
 			if(flags & BOOSTPULSE_ACTIVE) {
 				flags &= ~BOOSTPULSE_ACTIVE;
-				//pr_info("auto_hotplug: Clearing boostpulse flags\n");
 			} else if (!(delayed_work_pending(&hotplug_offline_work)) && !(flags & BOOSTPULSE_ACTIVE)) {
-				//pr_info("auto_hotplug: Offlining CPU, avg running: %d\n", avg_running);
 				schedule_delayed_work_on(0, &hotplug_offline_work, HZ);
 			}
 		}
@@ -235,10 +236,10 @@ static void hotplug_online_single_work_fn(struct work_struct *work)
 			}
 		}
 	}
-	schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE);
+	schedule_delayed_work_on(0, &hotplug_decision_work, (HZ/2));
 }
 
-static void hotplug_offline_work_fn(struct work_struct *work)
+static void hotplug_offline_single_work_fn(struct work_struct *work)
 {
 	int cpu;
 	for_each_online_cpu(cpu) {
@@ -248,12 +249,11 @@ static void hotplug_offline_work_fn(struct work_struct *work)
 			break;
 		}
 	}
-	schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE);
+	schedule_delayed_work_on(0, &hotplug_decision_work, HZ);
 }
 
 static void hotplug_unpause_work_fn(struct work_struct *work)
 {
-	//pr_info("auto_hotplug: Clearing pause flag\n");
 	flags &= ~HOTPLUG_PAUSED;
 }
 
@@ -273,7 +273,6 @@ inline void hotplug_boostpulse(void)
 		 * whilst the user is interacting with the device.
 		 */
 		if (likely(num_online_cpus() < 2)) {
-			//pr_info("User is interacting with the device, make sure 2 CPU's are active.\n");
 			cancel_delayed_work_sync(&hotplug_offline_work);
 			flags |= HOTPLUG_PAUSED;
 			schedule_work(&hotplug_online_single_work);
@@ -282,9 +281,8 @@ inline void hotplug_boostpulse(void)
 			if (delayed_work_pending(&hotplug_offline_work)) {
 				cancel_delayed_work(&hotplug_offline_work);
 				flags |= HOTPLUG_PAUSED;
-				//pr_info("Device is boostpulsed, skip any type of work.\n");
-				schedule_delayed_work(&hotplug_unpause_work, HZ * 2);
-				schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE);
+				schedule_delayed_work(&hotplug_unpause_work, HZ);
+				schedule_delayed_work_on(0, &hotplug_decision_work, HZ);
 			}
 		}
 	}
@@ -293,7 +291,6 @@ inline void hotplug_boostpulse(void)
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void auto_hotplug_early_suspend(struct early_suspend *handler)
 {
-	//pr_info("auto_hotplug: early suspend handler\n");
 	flags |= EARLYSUSPEND_ACTIVE;
  
 	/* Cancel all scheduled delayed work to avoid races */
@@ -307,10 +304,9 @@ static void auto_hotplug_early_suspend(struct early_suspend *handler)
 
 static void auto_hotplug_late_resume(struct early_suspend *handler)
 {
-	//pr_info("auto_hotplug: late resume handler\n");
 	flags &= ~EARLYSUSPEND_ACTIVE;
  
-	schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE);
+	schedule_delayed_work_on(0, &hotplug_decision_work, HZ);
 }
 
 static struct early_suspend auto_hotplug_suspend = {
@@ -329,7 +325,7 @@ int __init auto_hotplug_init(void)
 	INIT_WORK(&hotplug_online_all_work, hotplug_online_all_work_fn);
 	INIT_WORK(&hotplug_online_single_work, hotplug_online_single_work_fn);
 	INIT_WORK(&hotplug_offline_all_work, hotplug_offline_all_work_fn);
-	INIT_DELAYED_WORK_DEFERRABLE(&hotplug_offline_work, hotplug_offline_work_fn);
+	INIT_DELAYED_WORK_DEFERRABLE(&hotplug_offline_work, hotplug_offline_single_work_fn);
 
 	/*
 	 * Give the system time to boot before fiddling with hotplugging.
