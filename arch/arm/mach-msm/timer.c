@@ -1166,6 +1166,16 @@ static void __init msm_timer_init(void)
 	}
 	msm_sched_clock_init();
 
+	if (use_user_accessible_timers()) {
+		if (cpu_is_msm8960() || cpu_is_msm8930() || cpu_is_apq8064()) {
+			struct msm_clock *gtclock = &msm_clocks[MSM_CLOCK_GPT];
+			void __iomem *addr = gtclock->regbase +
+				TIMER_COUNT_VAL + global_timer_offset;
+			setup_user_timer_offset(virt_to_phys(addr)&0xfff);
+			set_user_accessible_timer_flag(true);
+		}
+	}
+
 	if (is_smp()) {
 		__raw_writel(1,
 			msm_clocks[MSM_CLOCK_DGT].regbase + TIMER_ENABLE);
