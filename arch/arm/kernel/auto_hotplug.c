@@ -56,7 +56,7 @@
  * SAMPLING_PERIODS * SAMPLING_RATE is the minimum
  * load history which will be averaged
  */
-#define SAMPLING_PERIODS 	20
+#define SAMPLING_PERIODS 	15
 #define INDEX_MAX_VALUE		(SAMPLING_PERIODS - 1)
 /*
  * SAMPLING_RATE is scaled based on num_online_cpus()
@@ -200,7 +200,7 @@ static void hotplug_online_all_work_fn(struct work_struct *work)
 {
 	int cpu;
 	for_each_possible_cpu(cpu) {
-		if (likely(!cpu_online(cpu))) {
+		if (!cpu_online(cpu)) {
 			cpu_up(cpu);
 			pr_info("auto_hotplug: CPU%d up.\n", cpu);
 		}
