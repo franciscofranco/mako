@@ -455,6 +455,15 @@ enum usb_bam {
 	HSIC_BAM,
 };
 
+#ifdef CONFIG_USB_CI13XXX_MSM
+void msm_hw_bam_disable(bool bam_disable);
+
+#else
+static inline void msm_hw_bam_disable(bool bam_disable)
+{
+}
+#endif
+
 #ifdef CONFIG_USB_DWC3_MSM
 int msm_ep_config(struct usb_ep *ep);
 int msm_ep_unconfig(struct usb_ep *ep);
