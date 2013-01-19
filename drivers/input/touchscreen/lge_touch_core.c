@@ -36,6 +36,7 @@
 #include <linux/input/lge_touch_core.h>
 
 void hotplug_boostpulse(void);
+void boostpulse(void);
 
 struct touch_device_driver*     touch_device_func;
 struct workqueue_struct*        touch_wq;
@@ -852,9 +853,11 @@ static void touch_work_func(struct work_struct *work)
 			
 		if (ts->ts_data.curr_data[0].x_position > (x + 100) || ts->ts_data.curr_data[0].x_position < (x - 100)) {
 			hotplug_boostpulse();
+			boostpulse();
 			flag = true;
 		} else if (ts->ts_data.curr_data[0].y_position > (y + 100) || ts->ts_data.curr_data[0].y_position < (y - 100)) {
 			hotplug_boostpulse();
+			boostpulse();
 			flag = true;
 		}
 	} else {
