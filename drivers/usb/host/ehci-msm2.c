@@ -539,7 +539,7 @@ static int msm_hsusb_reset(struct msm_hcd *mhcd)
 	return 0;
 }
 
-#define PHY_SUSPEND_TIMEOUT_USEC	(100 * 1000)
+#define PHY_SUSPEND_TIMEOUT_USEC	(500 * 1000)
 #define PHY_RESUME_TIMEOUT_USEC		(100 * 1000)
 
 #ifdef CONFIG_PM_SLEEP
