@@ -69,16 +69,16 @@ static int update_cpu_max_freq(int cpu, uint32_t max_freq)
 {
 	int ret = 0;
 
-	ret = msm_cpufreq_set_freq_limits(cpu, max_frequency, max_freq);
+	ret = msm_cpufreq_set_freq_limits(cpu, MSM_CPUFREQ_NO_LIMIT, max_freq);
 	if (ret)
 		return ret;
 
 	limited_max_freq = max_freq;
-	if (max_freq != max_frequency)
-		pr_info("msm_thermal: Setting cpu%d max frequency to %d\n",
+	if (max_freq != MSM_CPUFREQ_NO_LIMIT)
+		pr_info("msm_thermal: Limiting cpu%d max frequency to %d\n",
 				cpu, max_freq);
 	else {
-		pr_info("msm_thermal: Max frequency reset for cpu%d\n to %d\n", cpu, max_freq);
+		pr_info("msm_thermal: Max frequency reset for cpu%d\n", cpu);
 		throttling = false;
 	}
 
@@ -216,6 +216,11 @@ static int __devinit msm_thermal_dev_probe(struct platform_device *pdev)
 	if (ret)
 		goto fail;
 	WARN_ON(data.sensor_id >= TSENS_MAX_SENSORS);
+
+	key = "qcom,temp-hysteresis";
+	ret = of_property_read_u32(node, key, &data.temp_hysteresis_degC);
+	if (ret)
+		goto fail;
 
 	key = "qcom,freq-step";
 	ret = of_property_read_u32(node, key, &data.freq_step);
