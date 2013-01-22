@@ -35,7 +35,7 @@
 
 #include <linux/input/lge_touch_core.h>
 
-void hotplug_boostpulse(void);
+//void hotplug_boostpulse(void);
 void boostpulse(void);
 
 struct touch_device_driver*     touch_device_func;
@@ -771,6 +771,7 @@ static void touch_input_report(struct lge_touch_data *ts)
 				input_report_abs(ts->input_dev,
 					ABS_MT_TOUCH_MINOR,
 					ts->ts_data.curr_data[id].width_minor);
+			
 #ifdef LGE_TOUCH_POINT_DEBUG
 			if (id == 0 && tr_last_index < MAX_TRACE) {
 				tr_data[tr_last_index].x = ts->ts_data.curr_data[id].x_position;
@@ -800,10 +801,10 @@ static void touch_work_func(struct work_struct *work)
 	int int_pin = 0;
 	int next_work = 0;
 	int ret;
-	static unsigned int x = 0;
-	static unsigned int y = 0;
-	static bool flag = false;
-	static bool xy_lock = false;
+	//static unsigned int x = 0;
+	//static unsigned int y = 0;
+	//static bool flag = false;
+	//static bool xy_lock = false;
 
 	atomic_dec(&ts->next_work);
 	ts->ts_data.total_num = 0;
@@ -844,8 +845,10 @@ static void touch_work_func(struct work_struct *work)
 
 	touch_input_report(ts);
 	
-	if (ts->ts_data.curr_data[0].state == ABS_PRESS) {
-		if(!xy_lock) {
+	if (ts->ts_data.curr_data[0].state == ABS_PRESS) //{
+		boostpulse();
+		
+		/*if(!xy_lock) {
 			x = ts->ts_data.curr_data[0].x_position;
 			y = ts->ts_data.curr_data[0].y_position;
 			xy_lock = true;
@@ -853,11 +856,9 @@ static void touch_work_func(struct work_struct *work)
 			
 		if (ts->ts_data.curr_data[0].x_position > (x + 100) || ts->ts_data.curr_data[0].x_position < (x - 100)) {
 			hotplug_boostpulse();
-			boostpulse();
 			flag = true;
 		} else if (ts->ts_data.curr_data[0].y_position > (y + 100) || ts->ts_data.curr_data[0].y_position < (y - 100)) {
 			hotplug_boostpulse();
-			boostpulse();
 			flag = true;
 		}
 	} else {
@@ -865,7 +866,7 @@ static void touch_work_func(struct work_struct *work)
 		y = 0;
 		flag = false;
 		xy_lock = false;
-	}
+	}*/
 out:
 	if (likely(ts->pdata->role->operation_mode == INTERRUPT_MODE)) {
 		next_work = atomic_read(&ts->next_work);
