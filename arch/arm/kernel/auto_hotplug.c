@@ -306,6 +306,11 @@ static void auto_hotplug_late_resume(struct early_suspend *handler)
 {
 	flags &= ~EARLYSUSPEND_ACTIVE;
  
+	history[0] = 500;
+	history[1] = 500;
+	history[2] = 500;
+	history[3] = 500;
+	
 	schedule_delayed_work_on(0, &hotplug_decision_work, HZ);
 }
 
