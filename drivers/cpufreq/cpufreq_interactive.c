@@ -521,6 +521,7 @@ static void cpufreq_interactive_boost(void)
 
 	for_each_online_cpu(i) {
 		pcpu = &per_cpu(cpuinfo, i);
+
 		if (pcpu->target_freq < hispeed_freq) {
 			pcpu->target_freq = hispeed_freq;
 			cpumask_set_cpu(i, &speedchange_cpumask);
@@ -821,17 +822,9 @@ define_one_global_rw(boost);
 
 inline void boostpulse(void)
 {
-	struct cpufreq_interactive_cpuinfo *pcpu;
-	unsigned int cur_freq;
-	pcpu = &per_cpu(cpuinfo, 0);
-	cur_freq = pcpu->policy->cur;
-	if (cur_freq >= hispeed_freq)
-		return;
-	else {	
-		boostpulse_endtime = ktime_to_us(ktime_get()) + boostpulse_duration_val;
-		trace_cpufreq_interactive_boost("pulse");
-		cpufreq_interactive_boost();
-	}
+	boostpulse_endtime = ktime_to_us(ktime_get()) + boostpulse_duration_val;
+	trace_cpufreq_interactive_boost("pulse");
+	cpufreq_interactive_boost();
 }
 
 static ssize_t show_boostpulse_duration(
