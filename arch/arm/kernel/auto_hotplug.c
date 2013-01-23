@@ -56,7 +56,7 @@
  * SAMPLING_PERIODS * SAMPLING_RATE is the minimum
  * load history which will be averaged
  */
-#define SAMPLING_PERIODS 	15
+#define SAMPLING_PERIODS 	12
 #define INDEX_MAX_VALUE		(SAMPLING_PERIODS - 1)
 /*
  * SAMPLING_RATE is scaled based on num_online_cpus()
