@@ -79,7 +79,7 @@ unsigned char flags;
  * These two are scaled based on num_online_cpus()
  */
 
-static unsigned int enable_all_load_threshold __read_mostly = 375;
+static unsigned int enable_all_load_threshold __read_mostly = 425;
 static unsigned int enable_load_threshold __read_mostly = 275;
 static unsigned int disable_load_threshold __read_mostly = 125;
 
@@ -100,7 +100,7 @@ static unsigned int index;
 
 static void hotplug_decision_work_fn(struct work_struct *work)
 {
-	unsigned int disable_load, enable_load, avg_running = 0;
+	unsigned int running, disable_load, enable_load, avg_running = 0;
 	unsigned int online_cpus, available_cpus, i, j;
 	int cpu;
 #if DEBUG
@@ -111,9 +111,10 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 	available_cpus = 4;
 	disable_load = disable_load_threshold * online_cpus;
 	enable_load = enable_load_threshold * online_cpus;
+	running = nr_running() * 100;
 
 	for_each_online_cpu(cpu) {
-		history[index] = (nr_running() * 100);
+		history[index] = running;
 		if (unlikely(index++ == INDEX_MAX_VALUE))
 			index = 0;
 	}
