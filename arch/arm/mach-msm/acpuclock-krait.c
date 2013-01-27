@@ -861,18 +861,19 @@ ssize_t acpuclk_set_vdd(char *buf)
 	int i;
     int ret = 0;
 
-	if (buf) {			
-		for (i = 0; drv.acpu_freq_tbl[i].use_for_scaling; i++) {
-			ret = sscanf(buf, "%d", &cur_volt);
+	if (!buf)
+		return -EINVAL;
+		
+	for (i = 0; i < ARRAY_SIZE(size_cur); i++) {
+		ret = sscanf(buf, "%d", &cur_volt);
 
-			if (ret != 1)
-				return -EINVAL;
+		if (ret != 1)
+			return -EINVAL;
 				
-			drv.acpu_freq_tbl[i].vdd_core = cur_volt*1000;
+		drv.acpu_freq_tbl[i].vdd_core = cur_volt*1000;
 			
-			ret = sscanf(buf, "%s", size_cur);
-			buf += (strlen(size_cur)+1);
-		}
+		ret = sscanf(buf, "%s", size_cur);
+		buf += (strlen(size_cur)+1);
 	}
 	return ret;
 }
