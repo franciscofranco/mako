@@ -25,9 +25,9 @@
 #include <linux/of.h>
 #include <mach/cpufreq.h>
 
-#define POLLING_DELAY 100
+#define POLLING_DELAY 500
 
-unsigned int temp_threshold = 65;
+unsigned int temp_threshold = 70;
 module_param(temp_threshold, int, 0755);
 
 static int enabled;
@@ -39,7 +39,7 @@ static unsigned int limit_idx;
 static unsigned int limit_idx_low;
 static unsigned int limit_idx_high;
 static unsigned int max_frequency;
-static bool throttling = false;
+bool throttling;
 static struct cpufreq_frequency_table *table;
 struct cpufreq_policy *policy = NULL;
 
@@ -58,7 +58,7 @@ static int msm_thermal_get_freq_table(void)
 	while (table[i].frequency != max_frequency)
 		i++;
 
-	limit_idx_low = 6;
+	limit_idx_low = 4;
 	limit_idx_high = limit_idx = i - 1;
 	BUG_ON(limit_idx_high <= 0 || limit_idx_high <= limit_idx_low);
 fail:
@@ -68,17 +68,18 @@ fail:
 static int update_cpu_max_freq(int cpu, uint32_t max_freq)
 {
 	int ret = 0;
+	policy = cpufreq_cpu_get(0);
 
 	ret = msm_cpufreq_set_freq_limits(cpu, MSM_CPUFREQ_NO_LIMIT, max_freq);
 	if (ret)
 		return ret;
 
 	limited_max_freq = max_freq;
-	if (max_freq != MSM_CPUFREQ_NO_LIMIT)
+	if (max_freq != policy->max)
 		pr_info("msm_thermal: Limiting cpu%d max frequency to %d\n",
 				cpu, max_freq);
 	else {
-		pr_info("msm_thermal: Max frequency reset for cpu%d\n", cpu);
+		pr_info("msm_thermal: Max frequency reset for cpu%d to %d\n", cpu, max_freq);
 		throttling = false;
 	}
 
@@ -125,6 +126,7 @@ static void check_temp(struct work_struct *work)
 		limit_idx = limit_idx_low;
 		if (limit_idx < limit_idx_low)
 			limit_idx = limit_idx_low;
+		
 		max_freq = table[limit_idx].frequency;
 	} else if (temp < (temp_threshold - 5)) {
 		if (limit_idx == limit_idx_high)
