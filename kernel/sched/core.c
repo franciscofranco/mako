@@ -6426,6 +6426,7 @@ static void init_sched_groups_power(int cpu, struct sched_domain *sd)
 
 	update_group_power(sd, cpu);
 	atomic_set(&sg->sgp->nr_busy_cpus, sg->group_weight);
+	clear_bit(NOHZ_IDLE, nohz_flags(cpu));
 }
 
 int __weak arch_sd_sibling_asym_packing(void)
