@@ -5126,7 +5126,7 @@ void trigger_load_balance(struct rq *rq, int cpu)
 	    likely(!on_null_domain(cpu)))
 		raise_softirq(SCHED_SOFTIRQ);
 #ifdef CONFIG_NO_HZ
-	if (nohz_kick_needed(rq, cpu) && likely(!on_null_domain(cpu)))
+	if (likely(!on_null_domain(cpu)) && nohz_kick_needed(rq, cpu))
 		nohz_balancer_kick(cpu);
 #endif
 }
