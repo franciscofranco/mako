@@ -647,9 +647,8 @@ static void *row_init_queue(struct request_queue *q)
 	rdata = kmalloc_node(sizeof(*rdata),
 			     GFP_KERNEL | __GFP_ZERO, q->node);
 	if (!rdata)
-		return -ENOMEM;
-		
-	memset(rdata, 0, sizeof(*rdata));
+		return NULL;
+
 	for (i = 0; i < ROWQ_MAX_PRIO; i++) {
 		INIT_LIST_HEAD(&rdata->row_queues[i].fifo);
 		rdata->row_queues[i].disp_quantum = row_queues_def[i].quantum;
@@ -676,7 +675,10 @@ static void *row_init_queue(struct request_queue *q)
 	rdata->rd_idle_data.idling_queue_idx = ROWQ_MAX_PRIO;
 	rdata->dispatch_queue = q;
 
-	return 0;
+	rdata->nr_urgent_in_flight = 0;
+	rdata->nr_reqs[READ] = rdata->nr_reqs[WRITE] = 0;
+
+	return rdata;
 }
 
 /*
