@@ -927,6 +927,9 @@ static void __init bus_init(const struct l2_level *l2_level)
 
 #ifdef CONFIG_USERSPACE_VOLTAGE_CONTROL
 
+#define MAX_VDD 1300
+#define MIN_VDD 700
+
 int get_num_freqs(void)
 {
 	int i;
@@ -969,6 +972,14 @@ ssize_t acpuclk_set_vdd(char *buf)
 
 		if (ret != 1)
 			return -EINVAL;
+			
+		if (cur_volt > MAX_VDD) {
+			pr_info("Voltage Control: new volt is %d and its higher than %d so we set it to MAX_VDD(%d).\n", cur_volt, MAX_VDD, MAX_VDD);
+			cur_volt = MAX_VDD;
+		} else if (cur_volt < MIN_VDD) {
+			pr_info("Voltage Control: new volt is %d and its lower than %d so we set it to MIN_VDD(%d).\n", cur_volt, MIN_VDD, MIN_VDD);
+			cur_volt = MIN_VDD;
+		}	
 				
 		drv.acpu_freq_tbl[i].vdd_core = cur_volt*1000;
 			
