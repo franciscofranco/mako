@@ -42,18 +42,39 @@
 #include <linux/earlysuspend.h>
 #endif
 
+static bool online_all_cpus __read_mostly = false;
+module_param(online_all_cpus, bool, 0755);
+
 struct work_struct hotplug_online_all_work;
 struct work_struct hotplug_offline_all_work;
 
+static void online_cpu_nr(int cpu)
+{
+	int ret;
+	
+	ret = cpu_up(cpu);
+	if (ret)
+		pr_info("Error %d online core %d\n", ret, cpu);
+}
+
+static void offline_cpu_nr(int cpu)
+{
+	int ret;
+	
+	ret = cpu_down(cpu);
+	if (ret)
+		pr_info("Error %d offline core %d\n", ret, cpu);
+}
+
 static void hotplug_online_all_work_fn(struct work_struct *work)
 {
-	int cpu;
-	for_each_possible_cpu(cpu) {
-		if (!cpu_online(cpu)) {
-			cpu_up(cpu);
-			pr_info("auto_hotplug: CPU%d up.\n", cpu);
-			return;
-		}
+	online_cpu_nr(1);
+	pr_info("auto_hotplug: CPU%d online.\n", 1);
+	
+	if (online_all_cpus) {
+		online_cpu_nr(2);
+		online_cpu_nr(3);
+		pr_info("auto_hotplug: CPU%d online.\n", 1);
 	}
 }
 
@@ -62,7 +83,7 @@ static void hotplug_offline_all_work_fn(struct work_struct *work)
 	int cpu;
 	for_each_possible_cpu(cpu) {
 		if (likely(cpu_online(cpu) && (cpu))) {
-			cpu_down(cpu);
+			offline_cpu_nr(cpu);
 			pr_info("auto_hotplug: CPU%d down.\n", cpu);
 		}
 	}
