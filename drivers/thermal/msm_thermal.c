@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -45,7 +45,7 @@ uint32_t freq_buffer;
 static void check_temp(struct work_struct *work)
 {
 	struct tsens_device tsens_dev;
-	unsigned long temp = 0;
+	long temp = 0;
     unsigned int cpu;
 	policy = cpufreq_cpu_get(0);
 	max_freq = policy->max;
