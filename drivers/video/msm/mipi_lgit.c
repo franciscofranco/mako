@@ -30,6 +30,15 @@ static struct dsi_buf lgit_tx_buf;
 static struct dsi_buf lgit_rx_buf;
 static int skip_init;
 
+struct dsi_cmd_desc new_color_vals[33];
+int get_whites(void);
+int get_mids(void);
+int get_blacks(void);
+int get_contrast(void);
+int get_brightness(void);
+int get_saturation(void);
+int get_greys(void);
+
 #define DSV_ONBST 57
 
 static int lgit_external_dsv_onoff(uint8_t on_off)
@@ -76,7 +85,7 @@ static int mipi_lgit_lcd_on(struct platform_device *pdev)
 
 	MIPI_OUTP(MIPI_DSI_BASE + 0x38, 0x10000000);
 	ret = mipi_dsi_cmds_tx(&lgit_tx_buf,
-			mipi_lgit_pdata->power_on_set_1,
+			new_color_vals,
 			mipi_lgit_pdata->power_on_set_size_1);
 	MIPI_OUTP(MIPI_DSI_BASE + 0x38, 0x14000000);
 	if (ret < 0) {
@@ -178,6 +187,35 @@ static void mipi_lgit_set_backlight_board(struct msm_fb_data_type *mfd)
 	mipi_lgit_pdata->backlight_level(level, 0, 0);
 }
 
+void update_vals(int array_pos)
+{
+	int val = 0;
+	if (array_pos == 1)
+		val = get_whites();
+	else if (array_pos == 2)
+		val = get_mids();
+	else if (array_pos == 3)
+		val = get_blacks();
+	else if (array_pos == 5)
+		val = get_contrast();
+	else if (array_pos == 6)
+		val = get_brightness();
+	else if (array_pos == 7)
+		val = get_saturation();
+	else if (array_pos == 8)
+		val = get_greys();
+	else
+		return;
+	
+	pr_info("Update_vals called.\n");
+	new_color_vals[5].payload[array_pos] = val;
+	new_color_vals[6].payload[array_pos] = val;
+	new_color_vals[7].payload[array_pos] = val;
+	new_color_vals[8].payload[array_pos] = val;
+	new_color_vals[9].payload[array_pos] = val;
+	new_color_vals[10].payload[array_pos] = val;
+}
+
 static int mipi_lgit_lcd_probe(struct platform_device *pdev)
 {
 	if (pdev->id == 0) {
@@ -185,6 +223,8 @@ static int mipi_lgit_lcd_probe(struct platform_device *pdev)
 		return 0;
 	}
 
+	memcpy((void *) new_color_vals, (void *) mipi_lgit_pdata->power_on_set_1, sizeof(new_color_vals));
+	
 	pr_info("%s start\n", __func__);
 
 	skip_init = true;
