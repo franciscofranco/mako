@@ -93,7 +93,7 @@ static int __init display_kcal_setup(char *kcal)
 		pr_info("kcal not calibrated yet : %d\n", vaild_k);
         kcal_r = 245;
         kcal_g = 245;
-        kcal_b = 255;
+        kcal_b = 252;
 		pr_info("set to default : %d\n", kcal_r);
 	}
 
