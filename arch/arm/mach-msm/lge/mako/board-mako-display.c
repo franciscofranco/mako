@@ -757,9 +757,9 @@ static char display_mode2 [8] = {0xB6, 0x00, 0x14, 0x0F, 0x16, 0x13, 0x05, 0x05}
  * 72 - 15 - 76 - 00 - 00 - 50 - 30 
  */
 
-#define g_white       0x60
+#define g_white       0x55
 #define g_mids        0x25
-#define g_black       0x70
+#define g_black       0x72
 #define g_contrast    0x00
 #define g_brightness  0x00
 #define g_saturation  0x55
