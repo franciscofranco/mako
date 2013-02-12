@@ -190,8 +190,10 @@ static void mipi_lgit_set_backlight_board(struct msm_fb_data_type *mfd)
 void update_vals(int array_pos)
 {
 	int val = 0;
+	int ret = 0;
+	
 	if (array_pos == 1)
-		val = get_whites();
+		val = get_greys();
 	else if (array_pos == 2)
 		val = get_mids();
 	else if (array_pos == 3)
@@ -203,7 +205,7 @@ void update_vals(int array_pos)
 	else if (array_pos == 7)
 		val = get_saturation();
 	else if (array_pos == 8)
-		val = get_greys();
+		val = get_whites();
 	else
 		return;
 	
@@ -214,6 +216,15 @@ void update_vals(int array_pos)
 	new_color_vals[8].payload[array_pos] = val;
 	new_color_vals[9].payload[array_pos] = val;
 	new_color_vals[10].payload[array_pos] = val;
+	
+	msleep(10);
+	MIPI_OUTP(MIPI_DSI_BASE + 0x38, 0x10000000);
+	ret = mipi_dsi_cmds_tx(&lgit_tx_buf,
+			new_color_vals,
+			mipi_lgit_pdata->power_on_set_size_1);
+	MIPI_OUTP(MIPI_DSI_BASE + 0x38, 0x14000000);
+	if (ret < 0)
+		pr_err("%s: failed to transmit power_on_set_1 cmds\n", __func__);
 }
 
 static int mipi_lgit_lcd_probe(struct platform_device *pdev)
