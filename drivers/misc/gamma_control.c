@@ -57,20 +57,20 @@ inline int get_greys(void)
 	return greys_val;
 }
 
-static ssize_t whites_show(struct device *dev, struct device_attribute *attr, char *buf)
+static ssize_t greys_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-    return sprintf(buf, "%d\n", whites_val);
+    return sprintf(buf, "%d\n", greys_val);
 }
 
-static ssize_t whites_store(struct device * dev, struct device_attribute * attr, const char * buf, size_t size)
+static ssize_t greys_store(struct device * dev, struct device_attribute * attr, const char * buf, size_t size)
 {
     int new_val;
 
 	sscanf(buf, "%d", &new_val);
 
-	if (new_val != whites_val) {
-		pr_info("New whites: %d\n", new_val);
-		whites_val = new_val;
+	if (new_val != greys_val) {
+		pr_info("New mids: %d\n", new_val);
+		greys_val = new_val;
 		update_vals(1);
 	}
 
@@ -177,20 +177,20 @@ static ssize_t saturation_store(struct device * dev, struct device_attribute * a
     return size;
 }
 
-static ssize_t greys_show(struct device *dev, struct device_attribute *attr, char *buf)
+static ssize_t whites_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-    return sprintf(buf, "%d\n", greys_val);
+    return sprintf(buf, "%d\n", whites_val);
 }
 
-static ssize_t greys_store(struct device * dev, struct device_attribute * attr, const char * buf, size_t size)
+static ssize_t whites_store(struct device * dev, struct device_attribute * attr, const char * buf, size_t size)
 {
     int new_val;
 
 	sscanf(buf, "%d", &new_val);
 
-	if (new_val != greys_val) {
-		pr_info("New mids: %d\n", new_val);
-		greys_val = new_val;
+	if (new_val != whites_val) {
+		pr_info("New whites: %d\n", new_val);
+		whites_val = new_val;
 		update_vals(8);
 	}
 
