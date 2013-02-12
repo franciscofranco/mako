@@ -4,6 +4,13 @@
 
 menu "Misc devices"
 
+config GAMMA_CONTROL
+	tristate "Mako Gamma Control"
+	default y
+	help
+	  This adds full support for Gamma screen tweaking on
+	  Mako.
+
 config SENSORS_LIS3LV02D
 	tristate
 	depends on INPUT
