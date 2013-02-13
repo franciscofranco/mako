@@ -10,15 +10,15 @@
 #include <linux/device.h>
 #include <linux/miscdevice.h>
 
-#define GAMMACONTROL_VERSION 1
+#define GAMMACONTROL_VERSION 2
 
-int whites_val = 114;
-int mids_val = 21;
-int blacks_val = 118;
-int contrast_val = 0;
-int brightness_val = 0;
-int saturation_val = 80;
-int greys_val = 48;
+unsigned int greys_val = 114;
+unsigned int mids_val = 21;
+unsigned int blacks_val = 118;
+unsigned int contrast_val = 0;
+unsigned int brightness_val = 0;
+unsigned int saturation_val = 80;
+unsigned int whites_val = 48;
 
 extern void update_vals(int array_pos);
 
@@ -69,6 +69,11 @@ static ssize_t greys_store(struct device * dev, struct device_attribute * attr, 
 	sscanf(buf, "%d", &new_val);
 
 	if (new_val != greys_val) {
+		if (new_val < 0)
+			new_val = 0;
+		else if (new_val > 255)
+			new_val = 255;
+			
 		pr_info("New mids: %d\n", new_val);
 		greys_val = new_val;
 		update_vals(1);
@@ -89,6 +94,10 @@ static ssize_t mids_store(struct device * dev, struct device_attribute * attr, c
 	sscanf(buf, "%d", &new_val);
 
 	if (new_val != mids_val) {
+		if (new_val < 0)
+			new_val = 0;
+		else if (new_val > 255)
+			new_val = 255;
 		pr_info("New mids: %d\n", new_val);
 		mids_val = new_val;
 		update_vals(2);
@@ -109,6 +118,10 @@ static ssize_t blacks_store(struct device * dev, struct device_attribute * attr,
 	sscanf(buf, "%d", &new_val);
 
 	if (new_val != blacks_val) {
+		if (new_val < 0)
+			new_val = 0;
+		else if (new_val > 255)
+			new_val = 255;
 		pr_info("New mids: %d\n", new_val);
 		blacks_val = new_val;
 		update_vals(3);
@@ -129,6 +142,10 @@ static ssize_t contrast_store(struct device * dev, struct device_attribute * att
 	sscanf(buf, "%d", &new_val);
 
 	if (new_val != contrast_val) {
+		if (new_val < 0)
+			new_val = 0;
+		else if (new_val > 31)
+			new_val = 31;
 		pr_info("New mids: %d\n", new_val);
 		contrast_val = new_val;
 		update_vals(5);
@@ -149,6 +166,10 @@ static ssize_t brightness_store(struct device * dev, struct device_attribute * a
 	sscanf(buf, "%d", &new_val);
 
 	if (new_val != brightness_val) {
+		if (new_val < 0)
+			new_val = 0;
+		else if (new_val > 31)
+			new_val = 31;
 		pr_info("New mids: %d\n", new_val);
 		brightness_val = new_val;
 		update_vals(6);
@@ -169,6 +190,10 @@ static ssize_t saturation_store(struct device * dev, struct device_attribute * a
 	sscanf(buf, "%d", &new_val);
 
 	if (new_val != saturation_val) {
+		if (new_val < 0)
+			new_val = 0;
+		else if (new_val > 7)
+			new_val = 7;
 		pr_info("New mids: %d\n", new_val);
 		saturation_val = new_val;
 		update_vals(7);
@@ -255,5 +280,4 @@ static int __init gammacontrol_init(void)
 
     return 0;
 }
-
-device_initcall(gammacontrol_init);
+late_initcall(gammacontrol_init);
