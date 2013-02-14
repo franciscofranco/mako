@@ -319,7 +319,7 @@ int __init auto_hotplug_init(void)
 	INIT_WORK(&hotplug_offline_all_work, hotplug_offline_all_work_fn);
 	INIT_DELAYED_WORK(&hotplug_decision_work, hotplug_decision_work_fn);
 	INIT_WORK(&hotplug_online_single_work, hotplug_online_single_work_fn);
-	INIT_DELAYED_WORK_DEFERRABLE(&hotplug_offline_work, hotplug_offline_single_work_fn);
+	INIT_DEFERRABLE_WORK(&hotplug_offline_work, hotplug_offline_single_work_fn);
 	
 	/*
 	 * The usual 20 seconds wait before starting the hotplug work
