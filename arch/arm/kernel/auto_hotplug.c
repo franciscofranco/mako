@@ -133,7 +133,7 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 		} else if (avg_running < disable_load && online_cpus > 1) {
 			if (boostpulse_active) {
 				boostpulse_active = false;
-			} else if (!(delayed_work_pending(&hotplug_offline_work)) && !boostpulse_active && num_online_cpus() > 2) {
+			} else if (!(delayed_work_pending(&hotplug_offline_work)) && num_online_cpus() > 2) {
 				
 				/* 
 				 * This count serves to filter any spurious lower load as we don't want the driver
@@ -141,7 +141,7 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 				 * load in one sample time.
 				 */ 
 				if (count++ == 4) {
-					schedule_delayed_work_on(0, &hotplug_offline_work, 0);
+					schedule_delayed_work_on(0, &hotplug_offline_work, SAMPLING_RATE/num_online_cpus());
 					
 					count = 0;
 				}
@@ -149,13 +149,13 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 		}
 	}
 
-	schedule_delayed_work_on(0, &hotplug_decision_work, msecs_to_jiffies(SAMPLING_RATE/num_online_cpus()));
+	schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE/num_online_cpus());
 }
 
 static void online_cpu_nr(int cpu)
 {
 	int ret;
-	
+		
 	ret = cpu_up(cpu);
 	pr_info("auto_hotplug: CPU%d online.\n", cpu);
 	if (ret)
@@ -165,7 +165,7 @@ static void online_cpu_nr(int cpu)
 static void offline_cpu_nr(int cpu)
 {
 	int ret;
-	
+		
 	ret = cpu_down(cpu);
 	pr_info("auto_hotplug: CPU%d down.\n", cpu);
 	if (ret)
@@ -185,11 +185,14 @@ static void __cpuinit hotplug_online_all_work_fn(struct work_struct *work)
 		schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE/num_online_cpus());
 		return;
 	} else {
-		online_cpu_nr(1);
+		if (!cpu_online(1))
+			online_cpu_nr(1);
 	
 		if (quad_core_mode) {
-			online_cpu_nr(2);
-			online_cpu_nr(3);
+			if (!cpu_online(2))
+				online_cpu_nr(2);
+			if (!cpu_online(3))
+				online_cpu_nr(3);
 		}
 	}
 }
@@ -197,7 +200,13 @@ static void __cpuinit hotplug_online_all_work_fn(struct work_struct *work)
 static void hotplug_offline_all_work_fn(struct work_struct *work)
 {
 	int cpu;
-	for_each_possible_cpu(cpu) {
+	
+	/* 
+	 * Offlining backwards to allow cpu0 and cpu1 to be online 
+	 * instead of cpu0 and cpu3 as I think it might have been 
+	 * conflicting with some of the routines in this driver 
+	 */
+	for (cpu = 3; cpu > 1; cpu--) {
 		if (likely(cpu_online(cpu) && (cpu))) {
 			offline_cpu_nr(cpu);
 		}
@@ -216,19 +225,25 @@ static void __cpuinit hotplug_online_single_work_fn(struct work_struct *work)
 			}
 		}
 	}
-	schedule_delayed_work_on(0, &hotplug_decision_work, HZ);
+	schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE/num_online_cpus());
 }
 
 static void hotplug_offline_single_work_fn(struct work_struct *work)
 {
 	int cpu;
-	for_each_online_cpu(cpu) {
-		if (cpu) {
+	
+	/* 
+	 * Offlining backwards to allow cpu0 and cpu1 to be online 
+	 * instead of cpu0 and cpu3 as I think it might have been 
+	 * conflicting with some of the routines in this driver 
+	 */
+	for (cpu = 3; cpu > 1; cpu--) {
+		if (likely(cpu_online(cpu) && (cpu))) {
 			offline_cpu_nr(cpu);
 			break;
 		}
 	}
-	schedule_delayed_work_on(0, &hotplug_decision_work, HZ);
+	schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE/num_online_cpus());
 }
 
 inline void hotplug_boostpulse(void)
@@ -253,7 +268,7 @@ inline void hotplug_boostpulse(void)
 			if (delayed_work_pending(&hotplug_offline_work)) {
 				cancel_delayed_work(&hotplug_offline_work);
 				hotplug_paused = true;
-				schedule_delayed_work_on(0, &hotplug_decision_work, HZ);
+				schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE/num_online_cpus());
 			}
 		}
 	}
@@ -282,7 +297,7 @@ static void __cpuinit auto_hotplug_late_resume(struct early_suspend *handler)
 	if (hotplug_routines) {
 		if (!cpu_online(1))
 			online_cpu_nr(1);
-		schedule_delayed_work_on(0, &hotplug_decision_work, HZ);
+		schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE/num_online_cpus());
 	} else
 		schedule_work_on(0, &hotplug_online_all_work);
 }
