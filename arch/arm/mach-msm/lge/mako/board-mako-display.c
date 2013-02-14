@@ -288,7 +288,7 @@ static int kcal_get_values(int *kcal_r, int *kcal_g, int *kcal_b)
 	return 0;
 }
 
-static int kcal_refresh_values(void)
+inline int kcal_refresh_values(void)
 {
 	return update_preset_lcdc_lut();
 }
