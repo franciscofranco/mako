@@ -41,6 +41,8 @@ int get_saturation(void);
 int get_greys(void);
 #endif
 
+int kcal_refresh_values(void);
+
 #define DSV_ONBST 57
 
 static int lgit_external_dsv_onoff(uint8_t on_off)
@@ -128,6 +130,7 @@ static int mipi_lgit_lcd_on(struct platform_device *pdev)
 		return ret;
 	}
 
+	kcal_refresh_values();
 	pr_info("%s finished\n", __func__);
 	return 0;
 }
