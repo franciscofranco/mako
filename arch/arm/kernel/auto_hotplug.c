@@ -92,7 +92,7 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 	
 	if (!hotplug_disabled) {
 		if (hotplug_paused) {
-			schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE/num_online_cpus());
+			schedule_delayed_work_on(0, &hotplug_decision_work, 10);
 			
 			hotplug_paused = false;
 			count = 0;
@@ -117,7 +117,7 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 			if (num_online_cpus() < 4)
 				schedule_work(&hotplug_online_all_work);
 			else
-				schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE/num_online_cpus());
+				schedule_delayed_work_on(0, &hotplug_decision_work, 10);
 				
 			count = 0;
 			
@@ -141,7 +141,7 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 				 * load in one sample time.
 				 */ 
 				if (count++ == 4) {
-					schedule_delayed_work_on(0, &hotplug_offline_work, SAMPLING_RATE/num_online_cpus());
+					schedule_work(&hotplug_offline_all_work);
 					
 					count = 0;
 				}
@@ -149,7 +149,7 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 		}
 	}
 
-	schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE/num_online_cpus());
+	schedule_delayed_work_on(0, &hotplug_decision_work, 10);
 }
 
 static void online_cpu_nr(int cpu)
@@ -182,7 +182,7 @@ static void __cpuinit hotplug_online_all_work_fn(struct work_struct *work)
 		if (!cpu_online(3)) 
 			online_cpu_nr(3);
 		
-		schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE/num_online_cpus());
+		schedule_delayed_work_on(0, &hotplug_decision_work, 10);
 		return;
 	} else {
 		if (!cpu_online(1))
@@ -225,7 +225,7 @@ static void __cpuinit hotplug_online_single_work_fn(struct work_struct *work)
 			}
 		}
 	}
-	schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE/num_online_cpus());
+	schedule_delayed_work_on(0, &hotplug_decision_work, 10);
 }
 
 static void hotplug_offline_single_work_fn(struct work_struct *work)
@@ -297,7 +297,7 @@ static void __cpuinit auto_hotplug_late_resume(struct early_suspend *handler)
 	if (hotplug_routines) {
 		if (!cpu_online(1))
 			online_cpu_nr(1);
-		schedule_delayed_work_on(0, &hotplug_decision_work, SAMPLING_RATE/num_online_cpus());
+		schedule_delayed_work_on(0, &hotplug_decision_work, 10);
 	} else
 		schedule_work_on(0, &hotplug_online_all_work);
 }
