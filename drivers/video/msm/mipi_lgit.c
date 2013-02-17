@@ -32,6 +32,7 @@ static struct dsi_buf lgit_rx_buf;
 static int skip_init;
 
 #ifdef CONFIG_GAMMA_CONTROL
+static DEFINE_MUTEX(color_lock);
 struct dsi_cmd_desc new_color_vals[33];
 int get_whites(void);
 int get_mids(void);
@@ -233,32 +234,41 @@ void update_vals(int array_pos)
 {
 	int val = 0;
 	int ret = 0;
+	int i;
+
+	switch(array_pos) {
+		case 1:
+			val = get_greys();
+			break;
+		case 2:
+			val = get_mids();
+			break;
+		case 3:
+			val = get_blacks();
+			break;
+		case 5:
+			val = get_contrast();
+			break;
+		case 6:
+			val = get_brightness();
+			break;
+		case 7:
+			val = get_saturation();
+			break;
+		case 8:
+			val = get_whites();
+			break;
+		default:
+			pr_info("%s - Wrong value - abort.\n", __FUNCTION__);
+			return;
+	}
 	
-	if (array_pos == 1)
-		val = get_greys();
-	else if (array_pos == 2)
-		val = get_mids();
-	else if (array_pos == 3)
-		val = get_blacks();
-	else if (array_pos == 5)
-		val = get_contrast();
-	else if (array_pos == 6)
-		val = get_brightness();
-	else if (array_pos == 7)
-		val = get_saturation();
-	else if (array_pos == 8)
-		val = get_whites();
-	else
-		return;
+	for (i = 5; i <= 10; i++)
+		new_color_vals[i].payload[array_pos] = val;
+
+	pr_info("%s - Updating display GAMMA settings.\n", __FUNCTION__);
 	
-	pr_info("Update_vals called.\n");
-	new_color_vals[5].payload[array_pos] = val;
-	new_color_vals[6].payload[array_pos] = val;
-	new_color_vals[7].payload[array_pos] = val;
-	new_color_vals[8].payload[array_pos] = val;
-	new_color_vals[9].payload[array_pos] = val;
-	new_color_vals[10].payload[array_pos] = val;
-	
+	mutex_lock(&color_lock);
 	msleep(20);
 	MIPI_OUTP(MIPI_DSI_BASE + 0x38, 0x10000000);
 	ret = mipi_dsi_cmds_tx(&lgit_tx_buf,
@@ -267,6 +277,7 @@ void update_vals(int array_pos)
 	MIPI_OUTP(MIPI_DSI_BASE + 0x38, 0x14000000);
 	if (ret < 0)
 		pr_err("%s: failed to transmit power_on_set_1 cmds\n", __func__);
+	mutex_unlock(&color_lock);
 }
 EXPORT_SYMBOL(update_vals);
 #endif
