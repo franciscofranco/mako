@@ -42,12 +42,10 @@
 #include <linux/earlysuspend.h>
 #endif
 
-#define SAMPLING_RATE 		200
-
 /* Control flags */
 static bool hotplug_disabled = false;
 static bool hotplug_paused = false;
-static bool boostpulse_active = false;
+//static bool boostpulse_active = false;
 static bool earlysuspend_active = false;
 
 static unsigned int enable_all_load_threshold __read_mostly = 375;
@@ -55,17 +53,19 @@ static unsigned int enable_load_threshold __read_mostly = 275;
 static unsigned int disable_load_threshold __read_mostly = 125;
 static bool quad_core_mode __read_mostly = false;
 static bool hotplug_routines __read_mostly = true;
+static unsigned int sampling_rate __read_mostly = 10;
 
 module_param(enable_all_load_threshold, int, 0775);
 module_param(enable_load_threshold, int, 0775);
 module_param(disable_load_threshold, int, 0775);
 module_param(quad_core_mode, bool, 0755);
 module_param(hotplug_routines, bool, 0755);
+module_param(sampling_rate, int, 0755);
 
 struct delayed_work hotplug_decision_work;
 struct work_struct hotplug_online_single_work;
 struct delayed_work hotplug_offline_work;
-struct work_struct hotplug_boost_online_work;
+//struct work_struct hotplug_boost_online_work;
 struct work_struct hotplug_online_all_work;
 struct work_struct hotplug_offline_all_work;
 
@@ -111,11 +111,11 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 			 */
 			hotplug_paused = true;
 			
-			if (delayed_work_pending(&hotplug_offline_work))
-				cancel_delayed_work(&hotplug_offline_work);
+			if (work_pending(&hotplug_offline_all_work))
+				cancel_work_sync(&hotplug_offline_all_work);
 				
-			if (num_online_cpus() < 4)
-				schedule_work(&hotplug_online_all_work);
+			if (online_cpus < 4)
+				schedule_work_on(0, &hotplug_online_all_work);
 			else
 				schedule_delayed_work_on(0, &hotplug_decision_work, 10);
 				
@@ -123,29 +123,29 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 			
 			return;
 		} else if ((avg_running >= enable_load) && (online_cpus < available_cpus)) {
-			if (delayed_work_pending(&hotplug_offline_work))
-				cancel_delayed_work(&hotplug_offline_work);
-			schedule_work(&hotplug_online_single_work);
+			if (work_pending(&hotplug_offline_all_work))
+				cancel_work_sync(&hotplug_offline_all_work);
+			schedule_work_on(0, &hotplug_online_single_work);
 			
 			count = 0;
 			
 			return;
-		} else if (avg_running < disable_load && online_cpus > 1) {
-			if (boostpulse_active) {
-				boostpulse_active = false;
-			} else if (!(delayed_work_pending(&hotplug_offline_work)) && num_online_cpus() > 2) {
+		} else if (avg_running < disable_load && online_cpus > 2) {
+			//if (boostpulse_active) {
+			//	boostpulse_active = false;
+			//} else if (online_cpus > 2) {
 				
-				/* 
-				 * This count serves to filter any spurious lower load as we don't want the driver
-				 * to offline a core during a intense task if for some reason it reports a low
-				 * load in one sample time.
-				 */ 
-				if (count++ == 4) {
-					schedule_work(&hotplug_offline_all_work);
-					
-					count = 0;
-				}
+			/* 
+			 * This count serves to filter any spurious lower load as we don't want the driver
+			 * to offline a core during a intense task if for some reason it reports a low
+			 * load in one sample time. This can be called a sampling rate.
+			 */ 
+			if (count++ == sampling_rate) {
+				schedule_work_on(0, &hotplug_offline_all_work);
+				
+				count = 0;
 			}
+			//}
 		}
 	}
 
@@ -228,6 +228,7 @@ static void __cpuinit hotplug_online_single_work_fn(struct work_struct *work)
 	schedule_delayed_work_on(0, &hotplug_decision_work, 10);
 }
 
+#if 0
 static void hotplug_offline_single_work_fn(struct work_struct *work)
 {
 	int cpu;
@@ -273,6 +274,7 @@ inline void hotplug_boostpulse(void)
 		}
 	}
 }
+#endif //if 0
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void auto_hotplug_early_suspend(struct early_suspend *handler)
@@ -280,7 +282,7 @@ static void auto_hotplug_early_suspend(struct early_suspend *handler)
 	earlysuspend_active = true;
 	
 	if (hotplug_routines) {
-		cancel_delayed_work_sync(&hotplug_offline_work);
+		cancel_work_sync(&hotplug_offline_all_work);
     	cancel_delayed_work_sync(&hotplug_decision_work);
 	}
 	
@@ -315,9 +317,9 @@ int __init auto_hotplug_init(void)
 	pr_info("Modified by: Francisco Franco\n");
 	pr_info("auto_hotplug: %d CPUs detected\n", 4);
 
+	INIT_DELAYED_WORK(&hotplug_decision_work, hotplug_decision_work_fn);
 	INIT_WORK(&hotplug_online_all_work, hotplug_online_all_work_fn);
 	INIT_WORK(&hotplug_offline_all_work, hotplug_offline_all_work_fn);
-	INIT_DELAYED_WORK(&hotplug_decision_work, hotplug_decision_work_fn);
 	INIT_WORK(&hotplug_online_single_work, hotplug_online_single_work_fn);
 	INIT_DELAYED_WORK_DEFERRABLE(&hotplug_offline_work, hotplug_offline_single_work_fn);
 	
