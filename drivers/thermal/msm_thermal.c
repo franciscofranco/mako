@@ -25,7 +25,11 @@
 #include <linux/of.h>
 #include <mach/cpufreq.h>
 
-#define POLLING_DELAY 500
+/*
+ * Poll for temperature changes every 2 seconds.
+ * It will scale based on the device temperature.
+ */
+unsigned int polling = HZ*2;
 
 unsigned int temp_threshold = 70;
 module_param(temp_threshold, int, 0755);
@@ -75,10 +79,13 @@ static int update_cpu_max_freq(int cpu, uint32_t max_freq)
 		return ret;
 
 	limited_max_freq = max_freq;
-	if (max_freq != policy->max)
-		pr_info("msm_thermal: Limiting cpu%d max frequency to %d\n",
-				cpu, max_freq);
-	else {
+	if (max_freq != policy->max) {
+		polling = HZ/2;
+		pr_info("msm_thermal - temperature is high, poll faster: %d.\n", polling);
+		pr_info("msm_thermal: Limiting cpu%d max frequency to %d\n", cpu, max_freq);
+	} else if (max_freq == policy->max) {
+		polling = HZ*2;
+		pr_info("msm_thermal - temperature is low, poll slower: %d\n", polling);
 		pr_info("msm_thermal: Max frequency reset for cpu%d to %d\n", cpu, max_freq);
 		throttling = false;
 	}
@@ -148,7 +155,7 @@ static void check_temp(struct work_struct *work)
 
 reschedule:
 	if (enabled)
-		schedule_delayed_work(&check_temp_work, msecs_to_jiffies(POLLING_DELAY));
+		schedule_delayed_work(&check_temp_work, polling);
 }
 
 static void disable_msm_thermal(void)
