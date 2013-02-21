@@ -80,7 +80,7 @@ static int update_cpu_max_freq(int cpu, uint32_t max_freq)
 
 	limited_max_freq = max_freq;
 	if (max_freq != policy->max) {
-		polling = HZ/2;
+		polling = HZ/4;
 		pr_info("msm_thermal - temperature is high, poll faster: %d.\n", polling);
 		pr_info("msm_thermal: Limiting cpu%d max frequency to %d\n", cpu, max_freq);
 	} else if (max_freq == policy->max) {
