@@ -54,6 +54,7 @@ static unsigned int disable_load_threshold __read_mostly = 125;
 static bool quad_core_mode __read_mostly = false;
 static bool hotplug_routines __read_mostly = true;
 static unsigned int sampling_rate __read_mostly = 10;
+static unsigned int sampling_timer __read_mostly = 25;
 
 module_param(enable_all_load_threshold, int, 0775);
 module_param(enable_load_threshold, int, 0775);
@@ -61,6 +62,7 @@ module_param(disable_load_threshold, int, 0775);
 module_param(quad_core_mode, bool, 0755);
 module_param(hotplug_routines, bool, 0755);
 module_param(sampling_rate, int, 0755);
+module_param(sampling_timer, int, 0755);
 
 struct delayed_work hotplug_decision_work;
 struct work_struct hotplug_online_single_work;
@@ -70,6 +72,8 @@ struct work_struct hotplug_online_all_work;
 struct work_struct hotplug_offline_all_work;
 
 unsigned int count;
+
+static DEFINE_MUTEX(hotplug_lock);
 
 static void hotplug_decision_work_fn(struct work_struct *work)
 {
@@ -149,27 +153,31 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 		}
 	}
 
-	schedule_delayed_work_on(0, &hotplug_decision_work, 10);
+	schedule_delayed_work_on(0, &hotplug_decision_work, sampling_timer);
 }
 
 static void online_cpu_nr(int cpu)
 {
 	int ret;
 		
+	mutex_lock(&hotplug_lock);
 	ret = cpu_up(cpu);
 	pr_info("auto_hotplug: CPU%d online.\n", cpu);
 	if (ret)
 		pr_info("Error %d online core %d\n", ret, cpu);
+	mutex_unlock(&hotplug_lock);
 }
 
 static void offline_cpu_nr(int cpu)
 {
 	int ret;
-		
+	
+	mutex_lock(&hotplug_lock);
 	ret = cpu_down(cpu);
 	pr_info("auto_hotplug: CPU%d down.\n", cpu);
 	if (ret)
 		pr_info("Error %d offline core %d\n", ret, cpu);
+	mutex_unlock(&hotplug_lock);
 }
 
 static void __cpuinit hotplug_online_all_work_fn(struct work_struct *work)
