@@ -892,7 +892,7 @@ skip_phy_resume:
 	}
 
 	enable_irq(hcd->irq);
-	dev_info(mehci->dev, "HSIC-USB exited from low power mode\n");
+	dev_dbg(mehci->dev, "HSIC-USB exited from low power mode\n");
 
 	return 0;
 }
