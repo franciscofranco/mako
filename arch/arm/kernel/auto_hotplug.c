@@ -138,12 +138,14 @@ static void __cpuinit no_hotplug_online_all_work_fn(struct work_struct *work)
 {
 	int cpu;
 
-	for_each_possible_cpu(cpu) {
-		if (cpu) {
-			if (!cpu_online(cpu))
-				cpu_up(cpu);
-			if (!quad_core_mode)
-				break;
+	if (!hotplug_routines) {
+		if (quad_core_mode) {
+			for_each_possible_cpu(cpu) {
+				if (cpu) {
+					if (!cpu_online(cpu))
+						cpu_up(cpu);
+				}
+			}
 		}
 	}
 }
@@ -244,10 +246,8 @@ inline void hotplug_boostpulse(void)
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void auto_hotplug_early_suspend(struct early_suspend *handler)
 {	
-	if (hotplug_routines) {
-		cancel_work_sync(&hotplug_offline_all_work);
-    	cancel_delayed_work_sync(&hotplug_decision_work);
-	}
+	cancel_work_sync(&hotplug_offline_all_work);
+    cancel_delayed_work_sync(&hotplug_decision_work);
 	
     if (num_online_cpus() > 1) {
     	pr_info("auto_hotplug: Offlining CPUs for early suspend\n");
