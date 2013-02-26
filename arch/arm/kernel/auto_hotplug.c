@@ -42,20 +42,20 @@
 #include <linux/earlysuspend.h>
 #endif
 
-static unsigned int enable_all_load_threshold __read_mostly = 400;
-static unsigned int enable_load_threshold __read_mostly = 250;
-static unsigned int disable_load_threshold __read_mostly = 100;
+#define SAMPLES 10
+
+static unsigned int enable_all_load_threshold __read_mostly = 325;
+static unsigned int enable_load_threshold __read_mostly = 200;
+static unsigned int disable_load_threshold __read_mostly = 125;
 static bool quad_core_mode __read_mostly = false;
 static bool hotplug_routines __read_mostly = true;
-static unsigned int sampling_rate __read_mostly = 10;
-static unsigned int sampling_timer __read_mostly = 30;
+static unsigned int sampling_timer __read_mostly = 100;
 
 module_param(enable_all_load_threshold, int, 0775);
 module_param(enable_load_threshold, int, 0775);
 module_param(disable_load_threshold, int, 0775);
 module_param(quad_core_mode, bool, 0755);
 module_param(hotplug_routines, bool, 0755);
-module_param(sampling_rate, int, 0755);
 module_param(sampling_timer, int, 0755);
 
 struct delayed_work hotplug_decision_work;
@@ -66,18 +66,24 @@ struct work_struct no_hotplug_online_all_work;
 struct work_struct hotplug_online_all_work;
 struct work_struct hotplug_offline_all_work;
 
-unsigned int count;
+unsigned int timer_history[SAMPLES];
+unsigned int foo;
+//unsigned int count;
 
 static void hotplug_decision_work_fn(struct work_struct *work)
 {
+	static unsigned int total = 0;
 	unsigned int disable_load, enable_load, available_cpus;
 	unsigned int online_cpus;
-	int avg_running;
+	int avg_running, i;
 
 	online_cpus = num_online_cpus();
 	available_cpus = num_possible_cpus();
 	disable_load = disable_load_threshold * online_cpus;
 	enable_load = enable_load_threshold * online_cpus;
+
+	if (foo++ == SAMPLES)
+		foo = 0;
 
 	/* 
 	 * This is a custom function from Codeaurora to calculate the average of the runnable threads
@@ -89,28 +95,26 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 	 */
 
 	sched_get_nr_running_avg(&avg_running);
+	timer_history[foo] = avg_running;
+
+	for (i = 0; i < ARRAY_SIZE(timer_history); i++)
+		total += timer_history[i];
+
+	total = total/SAMPLES;
+	//pr_info("hotplug_ decision: total: %d\n", total);
+
 	
-	if ((avg_running > enable_all_load_threshold) && (online_cpus < available_cpus)) {
-		
-		if (work_pending(&hotplug_offline_all_work))
-			cancel_work_sync(&hotplug_offline_all_work);
+	if ((total > enable_all_load_threshold) && (online_cpus < available_cpus)) {
 
 		schedule_work(&hotplug_online_all_work);
-
-		count = 0;
 		
 		return;
-	} else if ((avg_running >= enable_load) && (online_cpus < available_cpus)) {
-
-		if (work_pending(&hotplug_offline_all_work))
-			cancel_work_sync(&hotplug_offline_all_work);
+	} else if ((total >= enable_load) && (online_cpus < available_cpus)) {
 
 		schedule_work(&hotplug_online_single_work);
-		
-		count = 0;
-		
+				
 		return;
-	} else if ((avg_running < disable_load) && (online_cpus > 2)) {
+	} else if ((total < disable_load) && (online_cpus > 2)) {
 		//if (boostpulse_active) {
 		//	boostpulse_active = false;
 		//} else if (online_cpus > 2) {
@@ -120,11 +124,7 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 		 * to offline a core during a intense task if for some reason it reports a low
 		 * load in one sample time. This can be called a sampling rate.
 		 */ 
-		if (count++ == sampling_rate) {
-			schedule_work(&hotplug_offline_all_work);
-			
-			count = 0;
-		}
+		schedule_work(&hotplug_offline_all_work);
 		//}
 	}
 
@@ -246,8 +246,7 @@ inline void hotplug_boostpulse(void)
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void auto_hotplug_early_suspend(struct early_suspend *handler)
 {	
-	cancel_work_sync(&hotplug_offline_all_work);
-    cancel_delayed_work_sync(&hotplug_decision_work);
+    cancel_delayed_work(&hotplug_decision_work);
 	
     if (num_online_cpus() > 1) {
     	pr_info("auto_hotplug: Offlining CPUs for early suspend\n");
