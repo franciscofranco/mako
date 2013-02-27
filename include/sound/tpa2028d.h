@@ -43,8 +43,11 @@ struct audio_amp_platform_data {
 	char agc_compression_rate;
 	char agc_output_limiter_disable;
 	char agc_fixed_gain;
-	char atk_time;
-	char rel_time;
+//-- optional
+	char ATK_time;
+	char REL_time;
+	char Hold_time;
+	char Output_limit_level;
 	char max_gain;
 };
 
