@@ -42,7 +42,7 @@
 #include <linux/earlysuspend.h>
 #endif
 
-#define SAMPLES 10
+#define SAMPLES 15
 
 static unsigned int enable_all_load_threshold __read_mostly = 350;
 static unsigned int enable_load_threshold __read_mostly = 225;
