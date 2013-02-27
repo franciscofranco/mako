@@ -44,9 +44,9 @@
 
 #define SAMPLES 10
 
-static unsigned int enable_all_load_threshold __read_mostly = 325;
-static unsigned int enable_load_threshold __read_mostly = 200;
-static unsigned int disable_load_threshold __read_mostly = 125;
+static unsigned int enable_all_load_threshold __read_mostly = (125 * 4);
+static unsigned int enable_load_threshold __read_mostly = 225;
+static unsigned int disable_load_threshold __read_mostly = 60;
 static bool quad_core_mode __read_mostly = false;
 static bool hotplug_routines __read_mostly = true;
 static unsigned int sampling_timer __read_mostly = 100;
@@ -68,7 +68,22 @@ struct work_struct hotplug_offline_all_work;
 
 unsigned int timer_history[SAMPLES];
 unsigned int foo;
+bool _lock_hotplug = false;
 //unsigned int count;
+
+inline void lock_hotplug(void) {
+	_lock_hotplug = true;
+	schedule_work(&no_hotplug_online_all_work);
+	pr_info("SHIT IWAS CALLED\n");
+}
+
+inline void unlock_hotplug(void) {
+	_lock_hotplug = false;
+}
+
+inline bool get_lock_val(void) {
+	return _lock_hotplug;
+}
 
 static void hotplug_decision_work_fn(struct work_struct *work)
 {
@@ -103,7 +118,7 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 	total = total/SAMPLES;
 	//pr_info("hotplug_ decision: total: %d\n", total);
 
-	
+	if (!_lock_hotplug) {
 	if ((total > enable_all_load_threshold) && (online_cpus < available_cpus)) {
 
 		schedule_work(&hotplug_online_all_work);
@@ -126,6 +141,7 @@ static void hotplug_decision_work_fn(struct work_struct *work)
 		 */ 
 		schedule_work(&hotplug_offline_all_work);
 		//}
+	}
 	}
 
 	schedule_delayed_work(&hotplug_decision_work, msecs_to_jiffies(sampling_timer));
@@ -188,10 +204,12 @@ static void __cpuinit hotplug_online_single_work_fn(struct work_struct *work)
 		if (cpu) {
 			if (!cpu_online(cpu)) {
 				cpu_up(cpu);
-				break;
+				goto decision;
 			}
 		}
 	}
+
+decision:
 	schedule_delayed_work(&hotplug_decision_work, msecs_to_jiffies(sampling_timer));
 }
 
