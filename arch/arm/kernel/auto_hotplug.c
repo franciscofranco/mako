@@ -44,7 +44,7 @@
 
 #define SAMPLES 10
 
-static unsigned int enable_all_load_threshold __read_mostly = (125 * 4);
+static unsigned int enable_all_load_threshold __read_mostly = 350;
 static unsigned int enable_load_threshold __read_mostly = 225;
 static unsigned int disable_load_threshold __read_mostly = 60;
 static bool quad_core_mode __read_mostly = false;
