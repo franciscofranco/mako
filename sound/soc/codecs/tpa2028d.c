@@ -105,10 +105,10 @@ int tpa2028d_poweron(void)
 	char REL_time = amp_data->pdata->REL_time & 0x3F;
 	char Hold_time = amp_data->pdata->Hold_time & 0x3F;
 	char Output_limit_level = amp_data->pdata->Output_limit_level & 0x1F;
-	char max_gain = amp_data->pdata->max_gain;
-
-
-	agc_output_limiter_disable = (agc_output_limiter_disable<<7);
+	char Noise_Gate_Threshold
+		= (amp_data->pdata->Noise_Gate_Threshold & 0x03) << 5;
+	char AGC_Max_Gain = (amp_data->pdata->AGC_Max_Gain & 0x0F) << 4;
+	agc_output_limiter_disable = (agc_output_limiter_disable << 7);
 
 	fail |= WriteI2C(IC_CONTROL, 0xE3); /*Tuen On*/
 	fail |= WriteI2C(AGC_ATTACK_CONTROL, ATK_time); /*Tuen On*/
@@ -116,8 +116,11 @@ int tpa2028d_poweron(void)
 	fail |= WriteI2C(AGC_HOLD_TIME_CONTROL, Hold_time); /*Tuen On*/
 	fail |= WriteI2C(AGC_FIXED_GAIN_CONTROL, agc_fixed_gain); /*Tuen On*/
 	fail |= WriteI2C(AGC1_CONTROL,
-		Output_limit_level|agc_output_limiter_disable); /*Tuen On*/
-	fail |= WriteI2C(AGC2_CONTROL, max_gain);
+		Noise_Gate_Threshold|
+		Output_limit_level|
+		agc_output_limiter_disable); /*Tuen On*/
+	fail |= WriteI2C(AGC2_CONTROL,
+		AGC_Max_Gain|agc_compression_rate); /*Tuen On*/
 	fail |= WriteI2C(IC_CONTROL, 0xC3); /*Tuen On*/
 
 	return fail;
@@ -242,7 +245,7 @@ tpa2028d_fixed_gain_show(struct device *dev, struct device_attribute *attr,   ch
 	return sprintf(buf, "fixed_gain : %x, pdata->agc_fixed_gain : %d\n", val, pdata->agc_fixed_gain);
 }
 
-static ssize_t
+/*static ssize_t
 tpa2028d_atk_time_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct audio_amp_platform_data *pdata = amp_data->pdata;
@@ -303,7 +306,7 @@ tpa2028d_max_gain_store(struct device *dev, struct device_attribute *attr, const
 	if (sscanf(buf, "%d", &val) != 1)
 		return -EINVAL;
 
-	pdata->max_gain = val;
+	pdata->AGC_Max_Gain = val;
 	return count;
 }
 
@@ -317,8 +320,8 @@ tpa2028d_max_gain_show(struct device *dev, struct device_attribute *attr,   char
 
 	D("[tpa2028d_max_gain_show] val : %x \n",val);
 
-	return sprintf(buf, "max_gain : %x, pdata->max_gain : %d\n", val, pdata->max_gain);
-}
+	return sprintf(buf, "max_gain : %x, pdata->max_gain : %d\n", val, pdata->AGC_Max_Gain);
+}*/
 
 static ssize_t
 tpa2028d_ATK_time_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
@@ -424,6 +427,58 @@ tpa2028d_Output_limit_level_show(struct device *dev, struct device_attribute *at
         return sprintf(buf, "Output_limit_level : %x, pdata->Output_limit_level : %d\n", val, pdata->Output_limit_level);
 }
 
+static ssize_t
+tpa2028d_Noise_Gate_Threshold_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+        struct audio_amp_platform_data *pdata = amp_data->pdata;
+        int val;
+
+        if (sscanf(buf, "%d", &val) != 1)
+                return -EINVAL;
+
+        pdata->Noise_Gate_Threshold = val;
+        return count;
+}
+
+static ssize_t
+tpa2028d_Noise_Gate_Threshold_show(struct device *dev, struct device_attribute *attr,   char *buf)
+{
+        struct audio_amp_platform_data *pdata = amp_data->pdata;
+        char val=0;
+
+        ReadI2C(AGC1_CONTROL, &val);
+
+        D("[tpa2028d_Noise_Gate_Threshold_show] val : %x \n",val);
+
+        return sprintf(buf, "Noise_Gate_Threshold : %x, pdata->Noise_Gate_Threshold : %d\n", val, pdata->Noise_Gate_Threshold);
+}
+
+static ssize_t
+tpa2028d_AGC_Max_Gain_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+        struct audio_amp_platform_data *pdata = amp_data->pdata;
+        int val;
+
+        if (sscanf(buf, "%d", &val) != 1)
+                return -EINVAL;
+
+        pdata->AGC_Max_Gain = val;
+        return count;
+}
+
+static ssize_t
+tpa2028d_AGC_Max_Gain_show(struct device *dev, struct device_attribute *attr,   char *buf)
+{
+        struct audio_amp_platform_data *pdata = amp_data->pdata;
+        char val=0;
+
+        ReadI2C(AGC2_CONTROL, &val);
+
+        D("[tpa2028d_AGC_Max_Gain_show] val : %x \n",val);
+
+        return sprintf(buf, "AGC_Max_Gain : %x, pdata->AGC_Max_Gain : %d\n", val, pdata->AGC_Max_Gain);
+}
+
 static struct device_attribute tpa2028d_device_attrs[] = {
 	__ATTR(comp_rate,  S_IRUGO | S_IWUSR, tpa2028d_comp_rate_show, tpa2028d_comp_rate_store),
 	__ATTR(out_lim, S_IRUGO | S_IWUSR, tpa2028d_out_lim_show, tpa2028d_out_lim_store),
@@ -432,7 +487,8 @@ static struct device_attribute tpa2028d_device_attrs[] = {
 	__ATTR(REL_time, S_IRUGO | S_IWUSR, tpa2028d_REL_time_show, tpa2028d_REL_time_store),
 	__ATTR(Hold_time, S_IRUGO | S_IWUSR, tpa2028d_Hold_time_show, tpa2028d_Hold_time_store),
 	__ATTR(Output_limit_level, S_IRUGO | S_IWUSR, tpa2028d_Output_limit_level_show, tpa2028d_Output_limit_level_store),
-	__ATTR(max_gain, S_IRUGO | S_IWUSR, tpa2028d_max_gain_show, tpa2028d_max_gain_store),
+	__ATTR(Noise_Gate_Threshold, S_IRUGO | S_IWUSR, tpa2028d_Noise_Gate_Threshold_show, tpa2028d_Noise_Gate_Threshold_store),
+	__ATTR(AGC_Max_Gain, S_IRUGO | S_IWUSR, tpa2028d_AGC_Max_Gain_show, tpa2028d_AGC_Max_Gain_store),
 };
 
 static int tpa2028d_amp_probe(struct i2c_client *client,

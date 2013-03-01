@@ -48,7 +48,8 @@ struct audio_amp_platform_data {
 	char REL_time;
 	char Hold_time;
 	char Output_limit_level;
-	char max_gain;
+	char Noise_Gate_Threshold;
+	char AGC_Max_Gain;
 };
 
 /* SPK FUNCTION */
