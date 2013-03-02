@@ -34,168 +34,52 @@ unsigned int polling = HZ*2;
 unsigned int temp_threshold = 70;
 module_param(temp_threshold, int, 0755);
 
-static int enabled;
 static struct msm_thermal_data msm_thermal_info;
-static uint32_t limited_max_freq = MSM_CPUFREQ_NO_LIMIT;
 static struct delayed_work check_temp_work;
 
-static unsigned int limit_idx;
-static unsigned int limit_idx_low;
-static unsigned int limit_idx_high;
-static unsigned int max_frequency;
-bool throttling;
-static struct cpufreq_frequency_table *table;
 struct cpufreq_policy *policy = NULL;
 
-static int msm_thermal_get_freq_table(void)
-{
-	int ret = 0;
-	int i = 0;
-
-	table = cpufreq_frequency_get_table(0);
-	if (table == NULL) {
-		pr_debug("%s: error reading cpufreq table\n", __func__);
-		ret = -EINVAL;
-		goto fail;
-	}
-
-	while (table[i].frequency != max_frequency)
-		i++;
-
-	limit_idx_low = 4;
-	limit_idx_high = limit_idx = i - 1;
-	BUG_ON(limit_idx_high <= 0 || limit_idx_high <= limit_idx_low);
-fail:
-	return ret;
-}
-
-static int update_cpu_max_freq(int cpu, uint32_t max_freq)
-{
-	int ret = 0;
-	policy = cpufreq_cpu_get(0);
-
-	ret = msm_cpufreq_set_freq_limits(cpu, MSM_CPUFREQ_NO_LIMIT, max_freq);
-	if (ret)
-		return ret;
-
-	limited_max_freq = max_freq;
-	if (max_freq != policy->max) {
-		polling = HZ/4;
-		pr_info("msm_thermal - temperature is high, poll faster: %d.\n", polling);
-		pr_info("msm_thermal: Limiting cpu%d max frequency to %d\n", cpu, max_freq);
-	} else if (max_freq == policy->max) {
-		polling = HZ*2;
-		pr_info("msm_thermal - temperature is low, poll slower: %d\n", polling);
-		pr_info("msm_thermal: Max frequency reset for cpu%d to %d\n", cpu, max_freq);
-		throttling = false;
-	}
-
-	ret = cpufreq_update_policy(cpu);
-
-	return ret;
-}
+uint32_t max_freq;
+uint32_t freq_buffer;
 
 static void check_temp(struct work_struct *work)
 {
-	static int limit_init;
 	struct tsens_device tsens_dev;
 	unsigned long temp = 0;
-	uint32_t max_freq = limited_max_freq;
 	int cpu = 0;
-	int ret = 0;
 	policy = cpufreq_cpu_get(0);
+	max_freq = policy->max;
+	
+	if (freq_buffer == 0)
+		freq_buffer = max_freq;
 
 	tsens_dev.sensor_num = msm_thermal_info.sensor_id;
-	ret = tsens_get_temp(&tsens_dev, &temp);
-	if (ret) {
-		pr_debug("msm_thermal: Unable to read TSENS sensor %d\n",
-				tsens_dev.sensor_num);
-		goto reschedule;
-	}
+	tsens_get_temp(&tsens_dev, &temp);
 
-	if (!limit_init) {
-		ret = msm_thermal_get_freq_table();
-		if (ret)
-			goto reschedule;
-		else
-			limit_init = 1;
-	}
-
+	//temperature is high, lets throttle even more and poll faster (every .25s)
 	if (temp >= temp_threshold) {
-		if (!throttling) {
-			max_frequency = policy->max;
-			throttling = true;
+		max_freq = 1026000;
+		polling = HZ/4;
+	} 
+	//the device is getting hot, lets throttle a little bit
+	else if (temp >= (temp_threshold - 5)) {
+		max_freq = 1188000;
+	} 
+	//the device is in safe temperature, polling is normal (every second)
+	else if (temp < (temp_threshold - 10)) {
+		polling = HZ*2;
+	}
+
+	if (max_freq < freq_buffer || max_freq > freq_buffer) {
+		freq_buffer = max_freq;
+		for_each_possible_cpu(cpu) {
+			msm_cpufreq_set_freq_limits(cpu, MSM_CPUFREQ_NO_LIMIT, max_freq);
+			pr_info("msm_thermal: max cpu%d frequency changes to %dMHz - polling every %dms", cpu, max_freq/1000, jiffies_to_msecs(polling));
 		}
-		
-		if (limit_idx == limit_idx_low)
-			goto reschedule;
-
-		limit_idx = limit_idx_low;
-		if (limit_idx < limit_idx_low)
-			limit_idx = limit_idx_low;
-		
-		max_freq = table[limit_idx].frequency;
-	} else if (temp < (temp_threshold - 5)) {
-		if (limit_idx == limit_idx_high)
-			goto reschedule;
-
-		limit_idx = limit_idx_high;
-		max_freq = max_frequency;
-	}
-	if (max_freq == limited_max_freq)
-		goto reschedule;
-
-	/* Update new limits */
-	for_each_possible_cpu(cpu) {
-		ret = update_cpu_max_freq(cpu, max_freq);
-		if (ret)
-			pr_debug("Unable to limit cpu%d max freq to %d\n",
-					cpu, max_freq);
 	}
 
-reschedule:
-	if (enabled)
-		schedule_delayed_work(&check_temp_work, polling);
+	schedule_delayed_work(&check_temp_work, polling);
 }
-
-static void disable_msm_thermal(void)
-{
-	int cpu = 0;
-
-	/* make sure check_temp is no longer running */
-	cancel_delayed_work(&check_temp_work);
-	flush_scheduled_work();
-
-	if (limited_max_freq == MSM_CPUFREQ_NO_LIMIT)
-		return;
-
-	for_each_possible_cpu(cpu) {
-		update_cpu_max_freq(cpu, MSM_CPUFREQ_NO_LIMIT);
-	}
-}
-
-static int set_enabled(const char *val, const struct kernel_param *kp)
-{
-	int ret = 0;
-
-	ret = param_set_bool(val, kp);
-	if (!enabled)
-		disable_msm_thermal();
-	else
-		pr_info("msm_thermal: no action for enabled = %d\n", enabled);
-
-	pr_info("msm_thermal: enabled = %d\n", enabled);
-
-	return ret;
-}
-
-static struct kernel_param_ops module_ops = {
-	.set = set_enabled,
-	.get = param_get_bool,
-};
-
-module_param_cb(enabled, &module_ops, &enabled, 0644);
-MODULE_PARM_DESC(enabled, "enforce thermal limit on cpu");
 
 int __devinit msm_thermal_init(struct msm_thermal_data *pdata)
 {
@@ -205,9 +89,8 @@ int __devinit msm_thermal_init(struct msm_thermal_data *pdata)
 	BUG_ON(pdata->sensor_id >= TSENS_MAX_SENSORS);
 	memcpy(&msm_thermal_info, pdata, sizeof(struct msm_thermal_data));
 
-	enabled = 1;
 	INIT_DELAYED_WORK(&check_temp_work, check_temp);
-	schedule_delayed_work(&check_temp_work, 0);
+	schedule_delayed_work(&check_temp_work, HZ*20);
 
 	return ret;
 }
