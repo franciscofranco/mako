@@ -269,7 +269,9 @@ void update_vals(int array_pos)
 	pr_info("%s - Updating display GAMMA settings.\n", __FUNCTION__);
 	
 	mutex_lock(&color_lock);
-	msleep(20);
+
+	//blocks the CPU so it doesn't end up in a race condition and panics the system
+	mdelay(20);
 	MIPI_OUTP(MIPI_DSI_BASE + 0x38, 0x10000000);
 	ret = mipi_dsi_cmds_tx(&lgit_tx_buf,
 			new_color_vals,

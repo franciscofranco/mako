@@ -74,7 +74,7 @@ static ssize_t greys_store(struct device * dev, struct device_attribute * attr, 
 		else if (new_val > 255)
 			new_val = 255;
 			
-		pr_info("New mids: %d\n", new_val);
+		pr_info("New grays: %d\n", new_val);
 		greys_val = new_val;
 		update_vals(1);
 	}
@@ -122,7 +122,7 @@ static ssize_t blacks_store(struct device * dev, struct device_attribute * attr,
 			new_val = 0;
 		else if (new_val > 255)
 			new_val = 255;
-		pr_info("New mids: %d\n", new_val);
+		pr_info("New blacks: %d\n", new_val);
 		blacks_val = new_val;
 		update_vals(3);
 	}
@@ -146,7 +146,7 @@ static ssize_t contrast_store(struct device * dev, struct device_attribute * att
 			new_val = 0;
 		else if (new_val > 255)
 			new_val = 255;
-		pr_info("New mids: %d\n", new_val);
+		pr_info("New contrast: %d\n", new_val);
 		contrast_val = new_val;
 		update_vals(5);
 	}
@@ -170,7 +170,7 @@ static ssize_t brightness_store(struct device * dev, struct device_attribute * a
 			new_val = 0;
 		else if (new_val > 255)
 			new_val = 255;
-		pr_info("New mids: %d\n", new_val);
+		pr_info("New brightness: %d\n", new_val);
 		brightness_val = new_val;
 		update_vals(6);
 	}
@@ -194,7 +194,7 @@ static ssize_t saturation_store(struct device * dev, struct device_attribute * a
 			new_val = 0;
 		else if (new_val > 255)
 			new_val = 255;
-		pr_info("New mids: %d\n", new_val);
+		pr_info("New saturation: %d\n", new_val);
 		saturation_val = new_val;
 		update_vals(7);
 	}
