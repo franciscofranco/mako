@@ -34,6 +34,7 @@ static int skip_init;
 #ifdef CONFIG_GAMMA_CONTROL
 static DEFINE_MUTEX(color_lock);
 struct dsi_cmd_desc new_color_vals[33];
+struct dsi_cmd_desc new_color_buf[33];
 int get_whites(void);
 int get_mids(void);
 int get_blacks(void);
@@ -90,18 +91,22 @@ static int mipi_lgit_lcd_on(struct platform_device *pdev)
 		return -EINVAL;
 
 	MIPI_OUTP(MIPI_DSI_BASE + 0x38, 0x10000000);
-	ret = mipi_dsi_cmds_tx(&lgit_tx_buf,
+	mutex_lock(&color_lock);
 #ifdef CONFIG_GAMMA_CONTROL
-			new_color_vals,
+	ret = mipi_dsi_cmds_tx(&lgit_tx_buf,
+		new_color_buf,
+		mipi_lgit_pdata->power_on_set_size_1);
 #else
-			mipi_lgit_pdata->power_on_set_1,
+	ret = mipi_dsi_cmds_tx(&lgit_tx_buf,
+		mipi_lgit_pdata->power_on_set_1,
+		mipi_lgit_pdata->power_on_set_size_1);
 #endif
-			mipi_lgit_pdata->power_on_set_size_1);
 	MIPI_OUTP(MIPI_DSI_BASE + 0x38, 0x14000000);
 	if (ret < 0) {
 		pr_err("%s: failed to transmit power_on_set_1 cmds\n", __func__);
 		return ret;
 	}
+	mutex_unlock(&color_lock);
 
 	if(!skip_init){
 		MIPI_OUTP(MIPI_DSI_BASE + 0x38, 0x10000000);
@@ -263,8 +268,10 @@ void update_vals(int array_pos)
 			return;
 	}
 	
-	for (i = 5; i <= 10; i++)
+	for (i = 5; i <= 10; i++) {
 		new_color_vals[i].payload[array_pos] = val;
+		new_color_buf[i].payload[array_pos] = val;
+	}
 
 	pr_info("%s - Updating display GAMMA settings.\n", __FUNCTION__);
 	
@@ -297,6 +304,7 @@ static int mipi_lgit_lcd_probe(struct platform_device *pdev)
 	
 #ifdef CONFIG_GAMMA_CONTROL
 	memcpy((void *) new_color_vals, (void *) mipi_lgit_pdata->power_on_set_1, sizeof(new_color_vals));
+	memcpy((void *) new_color_buf, (void *) mipi_lgit_pdata->power_on_set_1, sizeof(new_color_buf));
 #endif
 
 	pr_info("%s start\n", __func__);
