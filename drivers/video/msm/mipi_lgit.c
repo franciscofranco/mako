@@ -34,14 +34,6 @@ static int skip_init;
 #ifdef CONFIG_GAMMA_CONTROL
 static DEFINE_MUTEX(color_lock);
 struct dsi_cmd_desc new_color_vals[33];
-struct dsi_cmd_desc new_color_buf[33];
-int get_whites(void);
-int get_mids(void);
-int get_blacks(void);
-int get_contrast(void);
-int get_brightness(void);
-int get_saturation(void);
-int get_greys(void);
 #endif
 
 int kcal_refresh_values(void);
@@ -94,7 +86,7 @@ static int mipi_lgit_lcd_on(struct platform_device *pdev)
 	mutex_lock(&color_lock);
 #ifdef CONFIG_GAMMA_CONTROL
 	ret = mipi_dsi_cmds_tx(&lgit_tx_buf,
-		new_color_buf,
+		new_color_vals,
 		mipi_lgit_pdata->power_on_set_size_1);
 #else
 	ret = mipi_dsi_cmds_tx(&lgit_tx_buf,
@@ -235,42 +227,47 @@ static void mipi_lgit_set_backlight_board(struct msm_fb_data_type *mfd)
 }
 
 #ifdef CONFIG_GAMMA_CONTROL
-void update_vals(int array_pos)
+
+#define RED 1
+#define GREEN 2
+#define BLUE 3
+#define CONTRAST 5
+#define BRIGHTNESS 6
+#define SATURATION 7
+
+void update_vals(int type, int array_pos, int val)
 {
-	int val = 0;
 	int ret = 0;
 	int i;
 
-	switch(array_pos) {
-		case 1:
-			val = get_greys();
+	switch(type) {
+		case RED:
+			new_color_vals[5].payload[array_pos] = val;
+			new_color_vals[6].payload[array_pos] = val;
 			break;
-		case 2:
-			val = get_mids();
+		case GREEN:
+			new_color_vals[7].payload[array_pos] = val;
+			new_color_vals[8].payload[array_pos] = val;
 			break;
-		case 3:
-			val = get_blacks();
+		case BLUE:
+			new_color_vals[9].payload[array_pos] = val;
+			new_color_vals[9].payload[array_pos] = val;
 			break;
-		case 5:
-			val = get_contrast();
+		case CONTRAST:
+			for (i = 5; i <= 10; i++)
+				new_color_vals[i].payload[type] = val;
 			break;
-		case 6:
-			val = get_brightness();
+		case BRIGHTNESS:
+			for (i = 5; i <= 10; i++)
+				new_color_vals[i].payload[type] = val;
 			break;
-		case 7:
-			val = get_saturation();
-			break;
-		case 8:
-			val = get_whites();
+		case SATURATION:
+			for (i = 5; i <= 10; i++)
+				new_color_vals[i].payload[type] = val;
 			break;
 		default:
 			pr_info("%s - Wrong value - abort.\n", __FUNCTION__);
 			return;
-	}
-	
-	for (i = 5; i <= 10; i++) {
-		new_color_vals[i].payload[array_pos] = val;
-		new_color_buf[i].payload[array_pos] = val;
 	}
 
 	pr_info("%s - Updating display GAMMA settings.\n", __FUNCTION__);
@@ -304,7 +301,6 @@ static int mipi_lgit_lcd_probe(struct platform_device *pdev)
 	
 #ifdef CONFIG_GAMMA_CONTROL
 	memcpy((void *) new_color_vals, (void *) mipi_lgit_pdata->power_on_set_1, sizeof(new_color_vals));
-	memcpy((void *) new_color_buf, (void *) mipi_lgit_pdata->power_on_set_1, sizeof(new_color_buf));
 #endif
 
 	pr_info("%s start\n", __func__);
