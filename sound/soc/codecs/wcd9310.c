@@ -2800,6 +2800,15 @@ out:
 	return ret;
 }
 
+#ifdef CONFIG_SOUND_CONTROL
+unsigned int volume_boost = 0;
+
+void update_heaphones_volume_boost(unsigned int vol_boost)
+{
+	volume_boost = vol_boost;
+}
+#endif
+
 static int tabla_codec_reset_interpolator(struct snd_soc_dapm_widget *w,
 	struct snd_kcontrol *kcontrol, int event)
 {
@@ -2822,6 +2831,10 @@ static int tabla_codec_reset_interpolator(struct snd_soc_dapm_widget *w,
 				  snd_soc_read(codec,
 				  rx_digital_gain_reg[w->shift])
 				  );
+#ifdef CONFIG_SOUND_CONTROL
+		snd_soc_write(codec, rx_digital_gain_reg[0], volume_boost);
+		snd_soc_write(codec, rx_digital_gain_reg[1], volume_boost);
+#endif
 		break;
 	}
 	return 0;
