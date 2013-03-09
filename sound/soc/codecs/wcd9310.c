@@ -2675,14 +2675,14 @@ static void tx_hpf_corner_freq_callback(struct work_struct *work)
 
 #ifdef CONFIG_SOUND_CONTROL
 unsigned int volume_boost = 0;
-unsigned int headphones_gain = 0;
+int headphones_gain = 0;
 
 void update_headphones_volume_boost(unsigned int vol_boost)
 {
 	volume_boost = vol_boost;
 }
 
-void update_headphones_gain(unsigned int gain_boost)
+void update_headphones_gain(int gain_boost)
 {
 	headphones_gain = gain_boost;
 }

@@ -21,13 +21,13 @@
  */
 extern void update_headphones_volume_boost(unsigned int vol_boost);
 
-extern void update_headphones_gain(unsigned int gain_boost);
+extern void update_headphones_gain(int gain_boost);
 
 /*
  * Volume boost value
  */
 unsigned int boost = 0;
-unsigned int gain = 0;
+int gain = 0;
 unsigned int boost_limit = 20;
 
 /*
@@ -36,7 +36,7 @@ unsigned int boost_limit = 20;
 
 static ssize_t volume_boost_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-    return sprintf(buf, "%d\n", boost);
+    return sprintf(buf, "%u\n", boost);
 }
 
 static ssize_t volume_boost_store(struct device * dev, struct device_attribute * attr, const char * buf, size_t size)
@@ -62,14 +62,14 @@ static ssize_t volume_boost_store(struct device * dev, struct device_attribute *
 
 static ssize_t gain_boost_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-    return sprintf(buf, "%d\n", boost);
+    return sprintf(buf, "%d\n", gain);
 }
 
 static ssize_t gain_boost_store(struct device * dev, struct device_attribute * attr, const char * buf, size_t size)
 {
-    unsigned int new_val;
+    int new_val;
 
-	sscanf(buf, "%u", &new_val);
+	sscanf(buf, "%d", &new_val);
 
 	if (new_val != gain) {
 		if (new_val < 0)
@@ -77,7 +77,7 @@ static ssize_t gain_boost_store(struct device * dev, struct device_attribute * a
 		else if (new_val > boost_limit)
 			new_val = boost_limit;
 
-		pr_info("New volume_boost: %u\n", new_val);
+		pr_info("New volume_boost: %d\n", new_val);
 
 		gain = new_val;
 		update_headphones_gain(gain);
