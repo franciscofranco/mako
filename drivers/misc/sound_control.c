@@ -19,12 +19,15 @@
  * seconds and then it should be boosted.
  * @vol_boost: new volume boost passed to the sound card driver
  */
-extern void update_heaphones_volume_boost(unsigned int vol_boost);
+extern void update_headphones_volume_boost(unsigned int vol_boost);
+
+extern void update_headphones_gain(unsigned int gain_boost);
 
 /*
  * Volume boost value
  */
 unsigned int boost = 0;
+unsigned int gain = 0;
 unsigned int boost_limit = 20;
 
 /*
@@ -51,7 +54,33 @@ static ssize_t volume_boost_store(struct device * dev, struct device_attribute *
 		pr_info("New volume_boost: %u\n", new_val);
 
 		boost = new_val;
-		update_heaphones_volume_boost(boost);
+		update_headphones_volume_boost(boost);
+	}
+
+    return size;
+}
+
+static ssize_t gain_boost_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    return sprintf(buf, "%d\n", boost);
+}
+
+static ssize_t gain_boost_store(struct device * dev, struct device_attribute * attr, const char * buf, size_t size)
+{
+    unsigned int new_val;
+
+	sscanf(buf, "%u", &new_val);
+
+	if (new_val != gain) {
+		if (new_val < 0)
+			new_val = 0;
+		else if (new_val > boost_limit)
+			new_val = boost_limit;
+
+		pr_info("New volume_boost: %u\n", new_val);
+
+		gain = new_val;
+		update_headphones_gain(gain);
 	}
 
     return size;
@@ -63,12 +92,14 @@ static ssize_t soundcontrol_version(struct device * dev, struct device_attribute
 }
 
 static DEVICE_ATTR(volume_boost, 0777, volume_boost_show, volume_boost_store);
+static DEVICE_ATTR(gain_boost, 0777, gain_boost_show, gain_boost_store);
 
 static DEVICE_ATTR(version, 0777 , soundcontrol_version, NULL);
 
 static struct attribute *soundcontrol_attributes[] = 
 {
 	&dev_attr_volume_boost.attr,
+	&dev_attr_gain_boost.attr,
 	&dev_attr_version.attr,
 	NULL
 };

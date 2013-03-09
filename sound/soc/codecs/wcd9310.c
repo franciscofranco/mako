@@ -2673,6 +2673,21 @@ static void tx_hpf_corner_freq_callback(struct work_struct *work)
 	snd_soc_update_bits(codec, tx_mux_ctl_reg, 0x30, hpf_cut_of_freq << 4);
 }
 
+#ifdef CONFIG_SOUND_CONTROL
+unsigned int volume_boost = 0;
+unsigned int headphones_gain = 0;
+
+void update_headphones_volume_boost(unsigned int vol_boost)
+{
+	volume_boost = vol_boost;
+}
+
+void update_headphones_gain(unsigned int gain_boost)
+{
+	headphones_gain = gain_boost;
+}
+#endif
+
 #define  TX_MUX_CTL_CUT_OFF_FREQ_MASK	0x30
 #define  CF_MIN_3DB_4HZ			0x0
 #define  CF_MIN_3DB_75HZ		0x1
@@ -2778,6 +2793,12 @@ static int tabla_codec_enable_dec(struct snd_soc_dapm_widget *w,
 				  snd_soc_read(codec,
 				  tx_digital_gain_reg[w->shift + offset])
 				  );
+#ifdef CONFIG_SOUND_CONTROL
+		snd_soc_write(codec, rx_digital_gain_reg[0], volume_boost);
+		snd_soc_write(codec, rx_digital_gain_reg[1], volume_boost);
+		snd_soc_write(codec, TABLA_A_RX_HPH_L_GAIN, headphones_gain);
+		snd_soc_write(codec, TABLA_A_RX_HPH_R_GAIN, headphones_gain);
+#endif
 
 		break;
 
@@ -2799,15 +2820,6 @@ out:
 	kfree(widget_name);
 	return ret;
 }
-
-#ifdef CONFIG_SOUND_CONTROL
-unsigned int volume_boost = 0;
-
-void update_heaphones_volume_boost(unsigned int vol_boost)
-{
-	volume_boost = vol_boost;
-}
-#endif
 
 static int tabla_codec_reset_interpolator(struct snd_soc_dapm_widget *w,
 	struct snd_kcontrol *kcontrol, int event)
@@ -2834,6 +2846,9 @@ static int tabla_codec_reset_interpolator(struct snd_soc_dapm_widget *w,
 #ifdef CONFIG_SOUND_CONTROL
 		snd_soc_write(codec, rx_digital_gain_reg[0], volume_boost);
 		snd_soc_write(codec, rx_digital_gain_reg[1], volume_boost);
+		snd_soc_write(codec, TABLA_A_RX_HPH_L_GAIN, headphones_gain);
+		snd_soc_write(codec, TABLA_A_RX_HPH_R_GAIN, headphones_gain);
+
 #endif
 		break;
 	}
