@@ -1064,7 +1064,7 @@ static const struct soc_enum cf_rxmix6_enum =
 static const struct soc_enum cf_rxmix7_enum =
 	SOC_ENUM_SINGLE(TABLA_A_CDC_RX7_B4_CTL, 1, 3, cf_text);
 
-static struct snd_kcontrol_new tabla_snd_controls[] = {
+static const struct snd_kcontrol_new tabla_snd_controls[] = {
 
 	SOC_ENUM_EXT("EAR PA Gain", tabla_ear_pa_gain_enum[0],
 		tabla_pa_gain_get, tabla_pa_gain_put),
