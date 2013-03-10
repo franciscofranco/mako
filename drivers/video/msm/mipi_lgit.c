@@ -251,7 +251,7 @@ void update_vals(int type, int array_pos, int val)
 			break;
 		case BLUE:
 			new_color_vals[9].payload[array_pos] = val;
-			new_color_vals[9].payload[array_pos] = val;
+			new_color_vals[10].payload[array_pos] = val;
 			break;
 		case CONTRAST:
 			for (i = 5; i <= 10; i++)
