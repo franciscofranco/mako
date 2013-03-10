@@ -10,7 +10,7 @@
 #include <linux/device.h>
 #include <linux/miscdevice.h>
 
-#define SOUNDCONTROL_VERSION 1
+#define SOUNDCONTROL_VERSION 2
 
 /*
  * Update function callback into the sound card driver.
@@ -26,9 +26,11 @@ extern void update_headphones_gain(int gain_boost);
 /*
  * Volume boost value
  */
-unsigned int boost = 0;
+int boost = 0;
 int gain = 0;
-unsigned int boost_limit = 20;
+int boost_limit = 20;
+int gain_limit_p = 12;
+int gain_limit_n = -12;
 
 /*
  * Sysfs get/set entries
@@ -36,14 +38,14 @@ unsigned int boost_limit = 20;
 
 static ssize_t volume_boost_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-    return sprintf(buf, "%u\n", boost);
+    return sprintf(buf, "%d\n", boost);
 }
 
 static ssize_t volume_boost_store(struct device * dev, struct device_attribute * attr, const char * buf, size_t size)
 {
-    unsigned int new_val;
+    int new_val;
 
-	sscanf(buf, "%u", &new_val);
+	sscanf(buf, "%d", &new_val);
 
 	if (new_val != boost) {
 		if (new_val < 0)
@@ -51,7 +53,7 @@ static ssize_t volume_boost_store(struct device * dev, struct device_attribute *
 		else if (new_val > boost_limit)
 			new_val = boost_limit;
 
-		pr_info("New volume_boost: %u\n", new_val);
+		pr_info("New volume_boost: %d\n", new_val);
 
 		boost = new_val;
 		update_headphones_volume_boost(boost);
@@ -72,12 +74,12 @@ static ssize_t gain_boost_store(struct device * dev, struct device_attribute * a
 	sscanf(buf, "%d", &new_val);
 
 	if (new_val != gain) {
-		if (new_val < 0)
-			new_val = 0;
-		else if (new_val > boost_limit)
-			new_val = boost_limit;
+		if (new_val >= gain_limit_p)
+			new_val = gain_limit_p;
+		else if (new_val <= gain_limit_n)
+			new_val = gain_limit_n;
 
-		pr_info("New volume_boost: %d\n", new_val);
+		pr_info("New gain_boost: %d\n", new_val);
 
 		gain = new_val;
 		update_headphones_gain(gain);
@@ -88,7 +90,7 @@ static ssize_t gain_boost_store(struct device * dev, struct device_attribute * a
 
 static ssize_t soundcontrol_version(struct device * dev, struct device_attribute * attr, char * buf)
 {
-    return sprintf(buf, "%u\n", SOUNDCONTROL_VERSION);
+    return sprintf(buf, "%d\n", SOUNDCONTROL_VERSION);
 }
 
 static DEVICE_ATTR(volume_boost, 0777, volume_boost_show, volume_boost_store);
