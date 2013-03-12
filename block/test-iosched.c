@@ -1005,6 +1005,80 @@ static void test_exit_queue(struct elevator_queue *e)
 	kfree(td);
 }
 
+<<<<<<< HEAD
+=======
+/**
+ * test_get_test_data() - Returns a pointer to the test_data
+ * struct which keeps the current test data.
+ *
+ */
+struct test_data *test_get_test_data(void)
+{
+	return ptd;
+}
+EXPORT_SYMBOL(test_get_test_data);
+
+static bool test_urgent_pending(struct request_queue *q)
+{
+	return !list_empty(&ptd->urgent_queue);
+}
+
+/**
+ * test_iosched_add_urgent_req() - Add an urgent test_request.
+ * First mark the request as urgent, then add it to the
+ * urgent_queue test queue.
+ * @test_rq:		pointer to the urgent test_request to be
+ *			added.
+ *
+ */
+void test_iosched_add_urgent_req(struct test_request *test_rq)
+{
+	spin_lock_irq(&ptd->lock);
+	test_rq->rq->cmd_flags |= REQ_URGENT;
+	list_add_tail(&test_rq->queuelist, &ptd->urgent_queue);
+	ptd->urgent_count++;
+	spin_unlock_irq(&ptd->lock);
+}
+EXPORT_SYMBOL(test_iosched_add_urgent_req);
+
+/**
+ * test_reinsert_req() - Moves the @rq request from
+ *			@dispatched_queue into @reinsert_queue.
+ *			The @rq must be in @dispatched_queue
+ * @q:		request queue
+ * @rq:		request to be inserted
+ *
+ *
+ */
+static int test_reinsert_req(struct request_queue *q,
+			     struct request *rq)
+{
+	struct test_request *test_rq;
+	int ret = -EINVAL;
+
+	if (!ptd)
+		goto exit;
+
+	if (list_empty(&ptd->dispatched_queue)) {
+			test_pr_err("%s: dispatched_queue is empty", __func__);
+			goto exit;
+	}
+
+	list_for_each_entry(test_rq, &ptd->dispatched_queue, queuelist) {
+		if (test_rq->rq == rq) {
+			list_move(&test_rq->queuelist, &ptd->reinsert_queue);
+			ptd->dispatched_count--;
+			ptd->reinsert_count++;
+			ret = 0;
+			break;
+		}
+	}
+
+exit:
+	return ret;
+}
+
+>>>>>>> 2c41518... block: urgent request: remove unnecessary urgent marking
 static struct elevator_type elevator_test_iosched = {
 	.ops = {
 		.elevator_merge_req_fn = test_merged_requests,
