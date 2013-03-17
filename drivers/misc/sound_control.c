@@ -21,16 +21,16 @@
  */
 extern void update_headphones_volume_boost(unsigned int vol_boost);
 
-extern void update_headphones_gain(int gain_boost);
+extern void update_headset_volume_boost(int gain_boost);
 
 /*
  * Volume boost value
  */
 int boost = 0;
-int gain = 0;
 int boost_limit = 20;
-int gain_limit_p = 12;
-int gain_limit_n = -12;
+
+int headset_boost = 0;
+int headset_boost_limit = 30;
 
 /*
  * Sysfs get/set entries
@@ -62,27 +62,27 @@ static ssize_t volume_boost_store(struct device * dev, struct device_attribute *
     return size;
 }
 
-static ssize_t gain_boost_show(struct device *dev, struct device_attribute *attr, char *buf)
+static ssize_t headset_boost_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-    return sprintf(buf, "%d\n", gain);
+    return sprintf(buf, "%d\n", headset_boost);
 }
 
-static ssize_t gain_boost_store(struct device * dev, struct device_attribute * attr, const char * buf, size_t size)
+static ssize_t headset_boost_store(struct device * dev, struct device_attribute * attr, const char * buf, size_t size)
 {
     int new_val;
 
 	sscanf(buf, "%d", &new_val);
 
-	if (new_val != gain) {
-		if (new_val >= gain_limit_p)
-			new_val = gain_limit_p;
-		else if (new_val <= gain_limit_n)
-			new_val = gain_limit_n;
+	if (new_val != headset_boost) {
+		if (new_val >= headset_boost_limit)
+			new_val = headset_boost_limit;
+		else if (new_val <= 0)
+			new_val = 0;
 
-		pr_info("New gain_boost: %d\n", new_val);
+		pr_info("New headset_boost: %d\n", new_val);
 
-		gain = new_val;
-		update_headphones_gain(gain);
+		headset_boost = new_val;
+		update_headset_volume_boost(headset_boost);
 	}
 
     return size;
@@ -94,14 +94,14 @@ static ssize_t soundcontrol_version(struct device * dev, struct device_attribute
 }
 
 static DEVICE_ATTR(volume_boost, 0777, volume_boost_show, volume_boost_store);
-static DEVICE_ATTR(gain_boost, 0777, gain_boost_show, gain_boost_store);
+static DEVICE_ATTR(headset_boost, 0777, headset_boost_show, headset_boost_store);
 
 static DEVICE_ATTR(version, 0777 , soundcontrol_version, NULL);
 
 static struct attribute *soundcontrol_attributes[] = 
 {
 	&dev_attr_volume_boost.attr,
-	&dev_attr_gain_boost.attr,
+	&dev_attr_headset_boost.attr,
 	&dev_attr_version.attr,
 	NULL
 };

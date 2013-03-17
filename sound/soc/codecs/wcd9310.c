@@ -920,7 +920,7 @@ static const struct soc_enum cf_rxmix6_enum =
 static const struct soc_enum cf_rxmix7_enum =
 	SOC_ENUM_SINGLE(TABLA_A_CDC_RX7_B4_CTL, 1, 3, cf_text);
 
-static const struct snd_kcontrol_new tabla_snd_controls[] = {
+static struct snd_kcontrol_new tabla_snd_controls[] = {
 
 	SOC_ENUM_EXT("EAR PA Gain", tabla_ear_pa_gain_enum[0],
 		tabla_pa_gain_get, tabla_pa_gain_put),
@@ -2673,21 +2673,6 @@ static void tx_hpf_corner_freq_callback(struct work_struct *work)
 	snd_soc_update_bits(codec, tx_mux_ctl_reg, 0x30, hpf_cut_of_freq << 4);
 }
 
-#ifdef CONFIG_SOUND_CONTROL
-int volume_boost = 0;
-int headphones_gain = 0;
-
-void update_headphones_volume_boost(int vol_boost)
-{
-	volume_boost = vol_boost;
-}
-
-void update_headphones_gain(int gain_boost)
-{
-	headphones_gain = gain_boost;
-}
-#endif
-
 #define  TX_MUX_CTL_CUT_OFF_FREQ_MASK	0x30
 #define  CF_MIN_3DB_4HZ			0x0
 #define  CF_MIN_3DB_75HZ		0x1
@@ -2793,13 +2778,6 @@ static int tabla_codec_enable_dec(struct snd_soc_dapm_widget *w,
 				  snd_soc_read(codec,
 				  tx_digital_gain_reg[w->shift + offset])
 				  );
-#ifdef CONFIG_SOUND_CONTROL
-		snd_soc_write(codec, rx_digital_gain_reg[0], volume_boost);
-		snd_soc_write(codec, rx_digital_gain_reg[1], volume_boost);
-		snd_soc_write(codec, TABLA_A_RX_HPH_L_GAIN, headphones_gain);
-		snd_soc_write(codec, TABLA_A_RX_HPH_R_GAIN, headphones_gain);
-#endif
-
 		break;
 
 	case SND_SOC_DAPM_PRE_PMD:
@@ -2843,13 +2821,6 @@ static int tabla_codec_reset_interpolator(struct snd_soc_dapm_widget *w,
 				  snd_soc_read(codec,
 				  rx_digital_gain_reg[w->shift])
 				  );
-#ifdef CONFIG_SOUND_CONTROL
-		snd_soc_write(codec, rx_digital_gain_reg[0], volume_boost);
-		snd_soc_write(codec, rx_digital_gain_reg[1], volume_boost);
-		snd_soc_write(codec, TABLA_A_RX_HPH_L_GAIN, headphones_gain);
-		snd_soc_write(codec, TABLA_A_RX_HPH_R_GAIN, headphones_gain);
-
-#endif
 		break;
 	}
 	return 0;
@@ -7947,6 +7918,50 @@ static const struct file_operations codec_mbhc_debug_ops = {
 	.read = codec_mbhc_debug_read,
 };
 #endif
+
+#ifdef CONFIG_SOUND_CONTROL
+
+#define HEADSET_MAX_DEFAULT 12
+#define HEADSET_MIN_DEFAULT 0
+#define HEADPHONES_MAX_DEFAULT 40
+#define HEADPHONES_MIN_DEFAULT -84
+
+struct snd_kcontrol_new *kcontrol = (struct snd_kcontrol_new *) tabla_snd_controls;
+struct soc_mixer_control *left_mixer, *right_mixer, *left_headset_mixer, *right_headset_mixer;
+
+void update_headphones_volume_boost(int vol_boost)
+{
+	left_mixer = (struct soc_mixer_control *) kcontrol[8].private_value;
+	right_mixer = (struct soc_mixer_control *) kcontrol[9].private_value;
+
+	left_mixer->platform_max = HEADPHONES_MAX_DEFAULT + vol_boost;
+	left_mixer->max = HEADPHONES_MAX_DEFAULT + vol_boost;
+	left_mixer->min = HEADPHONES_MIN_DEFAULT + vol_boost;
+	pr_info("Left headphone max: %d - Left headphone min: %d\n", left_mixer->max, left_mixer->min);
+
+	right_mixer->platform_max = HEADPHONES_MAX_DEFAULT + vol_boost;
+	right_mixer->max = HEADPHONES_MAX_DEFAULT  + vol_boost;
+	right_mixer->min = HEADPHONES_MIN_DEFAULT + vol_boost;
+	pr_info("Right headphone max: %d - Right headphone min: %d\n", right_mixer->max, right_mixer->min);
+}
+
+void update_headset_volume_boost(int vol_boost)
+{
+	left_headset_mixer = (struct soc_mixer_control *) kcontrol[6].private_value;
+	right_headset_mixer = (struct soc_mixer_control *) kcontrol[7].private_value;
+
+	right_headset_mixer->platform_max = HEADSET_MAX_DEFAULT + vol_boost;
+	right_headset_mixer->max = HEADSET_MAX_DEFAULT + vol_boost;
+	right_headset_mixer->min = HEADSET_MIN_DEFAULT + vol_boost;
+	pr_info("Right headset max: %d - Right headset min: %d\n", right_headset_mixer->max, right_headset_mixer->min);
+
+	left_headset_mixer->platform_max = HEADSET_MAX_DEFAULT + vol_boost;
+	left_headset_mixer->max = HEADSET_MAX_DEFAULT + vol_boost;
+	left_headset_mixer->min = HEADSET_MIN_DEFAULT + vol_boost;
+	pr_info("Left headset max: %d - Left headset min: %d\n", left_headset_mixer->max, left_headset_mixer->min);
+}
+#endif
+
 
 static int tabla_codec_probe(struct snd_soc_codec *codec)
 {
