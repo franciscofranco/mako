@@ -1929,7 +1929,7 @@ static int touch_probe(struct i2c_client *client,
 		ts->pdata->caps->max_id = MAX_FINGER;
 	}
 
-	input_mt_init_slots(ts->input_dev, ts->pdata->caps->max_id);
+	input_mt_init_slots(ts->input_dev, ts->pdata->caps->max_id, 0);
 	input_set_abs_params(ts->input_dev,
 			ABS_MT_POSITION_X, 0, ts->pdata->caps->x_max, 0, 0);
 	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_Y, 0,
