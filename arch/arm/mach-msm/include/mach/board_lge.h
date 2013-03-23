@@ -24,11 +24,11 @@
 #endif
 
 #ifdef CONFIG_ANDROID_RAM_CONSOLE
-#define LGE_RAM_CONSOLE_SIZE	(124*SZ_1K * 2)
+#define LGE_RAM_CONSOLE_SIZE	(SZ_1K)
 #endif
 
 #ifdef CONFIG_LGE_CRASH_HANDLER
-#define LGE_CRASH_LOG_SIZE	(4*SZ_1K + SZ_1K)
+#define LGE_CRASH_LOG_SIZE	(SZ_1K)
 #endif
 
 typedef enum {
