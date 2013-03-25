@@ -28,9 +28,11 @@ extern void update_headset_volume_boost(int gain_boost);
  */
 int boost = 0;
 int boost_limit = 20;
+int boost_limit_min = -20;
 
 int headset_boost = 0;
 int headset_boost_limit = 30;
+int headset_boost_limit_min = -30;
 
 /*
  * Sysfs get/set entries
@@ -48,9 +50,10 @@ static ssize_t volume_boost_store(struct device * dev, struct device_attribute *
 	sscanf(buf, "%d", &new_val);
 
 	if (new_val != boost) {
-		if (new_val < 0)
-			new_val = 0;
-		else if (new_val > boost_limit)
+		if (new_val <= boost_limit_min)
+			new_val = boost_limit_min;
+
+		else if (new_val >= boost_limit)
 			new_val = boost_limit;
 
 		pr_info("New volume_boost: %d\n", new_val);
@@ -74,10 +77,11 @@ static ssize_t headset_boost_store(struct device * dev, struct device_attribute 
 	sscanf(buf, "%d", &new_val);
 
 	if (new_val != headset_boost) {
-		if (new_val >= headset_boost_limit)
+		if (new_val <= headset_boost_limit_min)
+			new_val = headset_boost_limit_min;
+
+		else if (new_val >= headset_boost_limit)
 			new_val = headset_boost_limit;
-		else if (new_val <= 0)
-			new_val = 0;
 
 		pr_info("New headset_boost: %d\n", new_val);
 
