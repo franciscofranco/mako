@@ -2004,11 +2004,11 @@ static int touch_probe(struct i2c_client *client,
 	/* accuracy solution */
 	if (ts->pdata->role->accuracy_filter_enable) {
 		ts->accuracy_filter.ignore_pressure_gap = 5;
-		ts->accuracy_filter.delta_max = 50;
-		ts->accuracy_filter.max_pressure = 55;
-		ts->accuracy_filter.time_to_max_pressure = 1;
+		ts->accuracy_filter.delta_max = 5;
+		ts->accuracy_filter.max_pressure = 255;
+		ts->accuracy_filter.time_to_max_pressure = 250;
 		ts->accuracy_filter.direction_count = 8;
-		ts->accuracy_filter.touch_max_count = 4;
+		ts->accuracy_filter.touch_max_count = 10;
 	}
 
 #if defined(CONFIG_HAS_EARLYSUSPEND)
