@@ -14,9 +14,13 @@
 #include <linux/earlysuspend.h>
 #include <linux/cpufreq.h>
 #include <linux/slab.h>
+#include <mach/cpufreq.h>
 
 //threshold is 2 seconds
 #define SEC_THRESHOLD 2000
+
+//the idea is to have this exported to userspace in the future
+#define SUSPEND_FREQ 702000
 
 unsigned int __read_mostly first_level = 80;
 unsigned int __read_mostly second_level = 50;
@@ -74,7 +78,6 @@ static void __cpuinit decide_hotplug_func(struct work_struct *work)
     sampling_timer = HZ/stats.online_cpus;
     
     
-    //every core online if it hits this threshold
     if (load >= first_level && stats.online_cpus < stats.total_cpus)
     {
         if ((now - stats.time_stamp) >= temp_diff)
@@ -156,6 +159,7 @@ static void mako_hotplug_early_suspend(struct early_suspend *handler)
     static int cpu = 0;
 	
     //cancel the hotplug work when the screen is off
+    flush_workqueue(wq);
     cancel_delayed_work_sync(&decide_hotplug);
     pr_info("Early Suspend stopping Hotplug work...");
     
@@ -174,21 +178,39 @@ static void mako_hotplug_early_suspend(struct early_suspend *handler)
         }
 	}
     
+    //cap max frequency to 702MHz
+    msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, SUSPEND_FREQ);
+    pr_info("Cpulimit: Early suspend - limit cpu%d max frequency to: %dMHz\n", 0, SUSPEND_FREQ/1000);
+    
     stats.online_cpus = num_online_cpus();
 }
 
 static void __cpuinit mako_hotplug_late_resume(struct early_suspend *handler)
 {
-    struct cpufreq_policy *policy = (struct cpufreq_policy *) policy;
+    static int cpu = 0;
     
-    //bump the frequency a notch for the next timer_rate period
-    policy->cur = 1512000; //1512MHz
+    //online cpu1 when the screen goes online
+    for_each_possible_cpu(cpu)
+    {
+        if (cpu)
+        {
+            if (!cpu_online(cpu))
+            {
+                cpu_up(cpu);
+                pr_info("Hotplug: cpu%d is up\n", cpu);
+                break;
+            }
+        }
+    }
     
-    //lets free the pointer (how much does this cost in ms?)
-    kfree(policy);
+    //restore default 1,5GHz max frequency
+    msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, MSM_CPUFREQ_NO_LIMIT);
+    pr_info("Cpulimit: Late resume - restore cpu%d max frequency.\n", 0);
+    
+    //new time_stamp because cpu1 was just onlined
+    stats.time_stamp = ktime_to_ms(ktime_get());
     
     pr_info("Late Resume starting Hotplug work...\n");
-    
     queue_delayed_work_on(0, wq, &decide_hotplug, HZ);
 }
 

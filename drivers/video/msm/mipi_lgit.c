@@ -19,16 +19,11 @@
  */
 #include <linux/gpio.h>
 #include <linux/syscore_ops.h>
-#include <linux/earlysuspend.h>
-#include <mach/cpufreq.h>
 
 #include "msm_fb.h"
 #include "mipi_dsi.h"
 #include "mipi_lgit.h"
 #include "mdp4.h"
-
-//the idea is to have this exported to userspace in the future
-#define SUSPEND_FREQ 702000
 
 static struct msm_panel_common_pdata *mipi_lgit_pdata;
 
@@ -297,33 +292,6 @@ struct syscore_ops panel_syscore_ops = {
 	.shutdown = mipi_lgit_lcd_shutdown,
 };
 
-static void cpulimit_early_suspend(struct early_suspend *handler)
-{
-	int cpu;
-
-	for_each_possible_cpu(cpu) {
-		msm_cpufreq_set_freq_limits(cpu, MSM_CPUFREQ_NO_LIMIT, SUSPEND_FREQ);
-      		pr_info("Cpulimit: Early suspend - limit max frequency to: %d\n", SUSPEND_FREQ);
-    	}
-	return;
-}
-
-static void cpulimit_late_resume(struct early_suspend *handler)
-{
-	int cpu;
-
-	for_each_possible_cpu(cpu) {
-		msm_cpufreq_set_freq_limits(cpu, MSM_CPUFREQ_NO_LIMIT, MSM_CPUFREQ_NO_LIMIT);
-      		pr_info("Cpulimit: Late resume - restore max frequency.\n");
-    	}
-	return;
-}
-
-static struct early_suspend cpulimit_suspend = {
-	.suspend = cpulimit_early_suspend,
-	.resume = cpulimit_late_resume,
-	.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1,
-};
 
 static int mipi_lgit_lcd_probe(struct platform_device *pdev)
 {
@@ -342,7 +310,6 @@ static int mipi_lgit_lcd_probe(struct platform_device *pdev)
 	msm_fb_add_device(pdev);
 
 	register_syscore_ops(&panel_syscore_ops);
-	register_early_suspend(&cpulimit_suspend);
 
 	return 0;
 }
