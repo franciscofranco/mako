@@ -197,8 +197,7 @@ static void __cpuinit mako_hotplug_late_resume(struct early_suspend *handler)
             if (!cpu_online(cpu))
             {
                 cpu_up(cpu);
-                pr_info("Hotplug: cpu%d is up\n", cpu);
-                break;
+                pr_info("Late Resume Hotplug: cpu%d is up\n", cpu);
             }
         }
     }
@@ -223,8 +222,11 @@ static struct early_suspend mako_hotplug_suspend =
 int __init start_dancing_init(void)
 {
 	pr_info("Mako Hotplug driver started.\n");
+        
+    wq = alloc_workqueue("mako_hotplug_workqueue", 0, 0);
     
-    wq = create_singlethread_workqueue("mako_hotplug_workqueue");
+    if (!wq)
+        return -ENOMEM;
     
     INIT_DELAYED_WORK(&decide_hotplug, decide_hotplug_func);
           
