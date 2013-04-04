@@ -157,7 +157,12 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 	 *
 	 * We can't do this for DEBUG_MUTEXES because that relies on wait_lock
 	 * to serialize everything.
+	 *
+	 * Only first task is allowed to spin on a given mutex and that
+	 * task will put its task_struct pointer into the spinner field.
 	 */
+	if (lock->spinner || (cmpxchg(&lock->spinner, NULL, current) != NULL))
+		goto slowpath;
 
 	for (;;) {
 		struct task_struct *owner;
@@ -174,6 +179,7 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 		    (atomic_cmpxchg(&lock->count, 1, 0) == 1)) {
 			lock_acquired(&lock->dep_map, ip);
 			mutex_set_owner(lock);
+			lock->spinner = NULL;
 			preempt_enable();
 			return 0;
 		}
@@ -195,6 +201,12 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 		 */
 		arch_mutex_cpu_relax();
 	}
+
+	/*
+	 * Done with spinning
+	 */
+	lock->spinner = NULL;
+slowpath:
 #endif
 	spin_lock_mutex(&lock->wait_lock, flags);
 
