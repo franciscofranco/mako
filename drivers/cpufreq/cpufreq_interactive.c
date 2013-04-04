@@ -497,14 +497,15 @@ static void cpufreq_interactive_boost(void)
 	int anyboost = 0;
 	unsigned long flags;
 	struct cpufreq_interactive_cpuinfo *pcpu;
+    unsigned int my_freq = 1026000;
 
 	spin_lock_irqsave(&up_cpumask_lock, flags);
 
 	for_each_online_cpu(i) {
 		pcpu = &per_cpu(cpuinfo, i);
 
-		if (pcpu->target_freq < hispeed_freq) {
-			pcpu->target_freq = 702000;
+		if (pcpu->target_freq < my_freq) {
+			pcpu->target_freq = my_freq;
 			cpumask_set_cpu(i, &up_cpumask);
 			pcpu->target_set_time_in_idle =
 				get_cpu_idle_time_us(i, &pcpu->target_set_time);
@@ -517,7 +518,7 @@ static void cpufreq_interactive_boost(void)
 		 * validated.
 		 */
 
-		pcpu->floor_freq = 702000;
+		pcpu->floor_freq = my_freq;
 		pcpu->floor_validate_time = ktime_to_us(ktime_get());
 	}
 
