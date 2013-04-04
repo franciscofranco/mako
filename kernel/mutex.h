@@ -46,3 +46,11 @@ static inline void
 debug_mutex_lock_common(struct mutex *lock, struct mutex_waiter *waiter)
 {
 }
+
+/*
+ * The atomic_xchg() function should not be called in __mutex_lock_common()
+ * if the value of the counter has already been set to -1.
+ */
+#ifndef MUTEX_SHOULD_XCHG_COUNT
+#define	MUTEX_SHOULD_XCHG_COUNT(mutex)	(atomic_read(&(mutex)->count) != -1)
+#endif
