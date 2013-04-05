@@ -27,9 +27,9 @@
 #include "tick-internal.h"
 
 
-struct rq_data rq_info;
-struct workqueue_struct *rq_wq;
-spinlock_t rq_lock;
+static struct rq_data rq_info;
+static struct workqueue_struct *rq_wq;
+static spinlock_t rq_lock;
 
 /*
  * Per cpu nohz control structure
