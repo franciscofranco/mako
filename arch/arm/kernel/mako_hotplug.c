@@ -249,7 +249,8 @@ int __init mako_hotplug_init(void)
 {
 	pr_info("Mako Hotplug driver started.\n");
         
-    wq = alloc_workqueue("mako_hotplug_workqueue", 0, 0);
+    wq = alloc_workqueue("mako_hotplug_workqueue",
+                         WQ_UNBOUND | WQ_RESCUER | WQ_FREEZABLE, 1);
     
     if (!wq)
         return -ENOMEM;
