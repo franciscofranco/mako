@@ -84,3 +84,8 @@ GTAGS
 *.orig
 *~
 \#*#
+boot.img
+mkboot/
+build.sh
+flash.sh
+zip/
