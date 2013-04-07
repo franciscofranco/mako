@@ -1,5 +1,6 @@
 /*
- *  Copyright (c) 2013, Francisco Franco <franciscofranco.1990@gmail.com>. All rights reserved.
+ *  Copyright (c) 2013, Francisco Franco <franciscofranco.1990@gmail.com>. 
+ *  All rights reserved.
  *
  *  Simple no bullshit hot[in]plug driver for SMP
  */
@@ -12,20 +13,24 @@
 #include <linux/sched.h>
 #include <linux/timer.h>
 #include <linux/earlysuspend.h>
-#include <linux/cpufreq.h>
-#include <linux/slab.h>
 #include <mach/cpufreq.h>
 
-//threshold is 2 seconds
+/* threshold for comparing time diffs is 2 seconds */
 #define SEC_THRESHOLD 2000
 
-//possibly merge this into the struct for code cleanness
-unsigned int __read_mostly default_first_level = 90;
-unsigned int __read_mostly default_second_level = 50;
-unsigned int __read_mostly default_third_level = 30;
-unsigned int __read_mostly suspend_freq = 702000;
+#define DEFAULT_FIRST_LEVEL 90
+unsigned int default_first_level;
 
-//functions comes from msm_rq_stats
+#define DEFAULT_SECOND_LEVEL 50
+unsigned int default_second_level;
+
+#define DEFAULT_THIRD_LEVEL 30
+unsigned int default_third_level;
+
+#define DEFAULT_SUSPEND_FREQ 702000
+unsigned int suspend_freq;
+
+/* this comes from msm_rq_stats */
 unsigned int report_load_at_max_freq(void);
 
 /*
@@ -33,19 +38,11 @@ unsigned int report_load_at_max_freq(void);
  */
 struct cpu_stats
 {
-    /*
-     * variable to be accessed to filter spurious load spikes
-     */
+    /* variable to be accessed to filter spurious load spikes */
     unsigned long time_stamp;
-    
-    /*
-     * number of online cpus
-     */
+
     unsigned int online_cpus;
-    
-    /*
-     * total number of cores in this SoC
-     */
+
     unsigned int total_cpus;
 };
 
@@ -55,104 +52,120 @@ static struct workqueue_struct *wq;
 
 static struct delayed_work decide_hotplug;
 
+static void first_level_work_check(unsigned long temp_diff, unsigned long now)
+{
+    unsigned int cpu = nr_cpu_ids;
+    
+    if ((now - stats.time_stamp) >= temp_diff)
+    {
+        for_each_possible_cpu(cpu)
+        {
+            if (cpu)
+            {
+                if (!cpu_online(cpu))
+                {
+                    cpu_up(cpu);
+                    pr_info("Hotplug: cpu%d is up\n", cpu);
+                }
+            }
+        }
+        
+        /*
+         * new current time for comparison in the next load check
+         * we don't want too many hot[in]plugs in small time span
+         */
+        stats.time_stamp = now;
+    }
+}
+
+static void second_level_work_check(unsigned long temp_diff, unsigned long now)
+{
+    unsigned int cpu = nr_cpu_ids;
+    
+    if ((now - stats.time_stamp) >= temp_diff)
+    {
+        for_each_possible_cpu(cpu)
+        {
+            if (cpu)
+            {
+                if (!cpu_online(cpu))
+                {
+                    cpu_up(cpu);
+                    pr_info("Hotplug: cpu%d is up\n", cpu);
+                    break;
+                }
+            }
+        }
+        
+        stats.time_stamp = now;
+    }
+}
+
+static void third_level_work_check(unsigned long temp_diff, unsigned long now)
+{
+    unsigned int cpu = nr_cpu_ids;
+    
+    if ((now - stats.time_stamp) >= temp_diff)
+    {
+        for_each_possible_cpu(cpu)
+        {
+            if (cpu)
+            {
+                if (cpu_online(cpu))
+                {
+                    cpu_down(cpu);
+                    pr_info("Hotplug: cpu%d is down\n", cpu);
+                }
+            }
+        }
+        
+        stats.time_stamp = now;
+    }
+}
+
 static void __cpuinit decide_hotplug_func(struct work_struct *work)
 {
-    unsigned long now;
-    unsigned int load;
-    unsigned long temp_diff;
-    unsigned long sampling_timer;
-    unsigned int first_level, second_level, third_level;
-    static int cpu = 0;
-
-    //load polled in this sampling time
+    unsigned long now, temp_diff, sampling_timer;
+    unsigned int load, first_level, second_level, third_level;
+        
+    /* load polled in this sampling time */
     load = report_load_at_max_freq();
     
-    //time of this sampling time
+    /* time of this sampling time */
     now = ktime_to_ms(ktime_get());
     
-    //the load thresholds scale with the number of online cpus
+    /* the load thresholds scale with the number of online cpus */
     first_level = default_first_level * stats.online_cpus;
     second_level = default_second_level * stats.online_cpus;
     third_level = default_third_level * stats.online_cpus;
     
-    //init temp_diff for the allowance of hotplug or not
+    /* init temp_diff for the allowance of hotplug or not */
     temp_diff = SEC_THRESHOLD/stats.online_cpus;
     
-    //jiffies count for how often the decision work is called
+    /* jiffies count for how often the decision work is called */
     sampling_timer = HZ/stats.online_cpus;
-    
-    
+        
     if (load >= first_level && stats.online_cpus < stats.total_cpus)
     {
-        if ((now - stats.time_stamp) >= temp_diff)
-        {	
-            for_each_possible_cpu(cpu)
-            {
-                if (cpu)
-                {
-                    if (!cpu_online(cpu))
-                    {
-                        cpu_up(cpu);
-                        pr_info("Hotplug: cpu%d is up\n", cpu);
-                    }
-                }
-            }
-            
-            /*
-             * new current time for comparison in the next load check
-             * we don't want too many hot[in]plugs in small time span
-             */
-            stats.time_stamp = now;
-        }
+        first_level_work_check(temp_diff, now);
         queue_delayed_work_on(0, wq, &decide_hotplug, sampling_timer);
         return;
     }
     
-    //load is medium-high so plug only one core
+    /* load is medium-high so online only one core at a time */
     else if (load >= second_level && stats.online_cpus < stats.total_cpus)
     {
-        if ((now - stats.time_stamp) >= temp_diff)
-        {
-            for_each_possible_cpu(cpu)
-            {
-                if (cpu)
-                {
-                    if (!cpu_online(cpu))
-                    {
-                        cpu_up(cpu);
-                        pr_info("Hotplug: cpu%d is up\n", cpu);
-                        break;
-                    }
-                }
-            }
-
-            stats.time_stamp = now;
-        }
+        second_level_work_check(temp_diff, now);
         queue_delayed_work_on(0, wq, &decide_hotplug, sampling_timer);
         return;
     }
     
-    //low load obliterate the cpus to death
+    /* low load obliterate the cpus to death */
     else if (load <= third_level && stats.online_cpus > 1)
     {
-        if ((now - stats.time_stamp) >= temp_diff)
-        {
-            for_each_possible_cpu(cpu)
-            {
-                if (cpu)
-                {
-                    if (cpu_online(cpu))
-                    {
-                        cpu_down(cpu);
-                        pr_info("Hotplug: cpu%d is down\n", cpu);
-                    }
-                }
-            }
-            
-            stats.time_stamp = now;
-        }
+        third_level_work_check(temp_diff, now);
     }
-    
+        
     stats.online_cpus = num_online_cpus();
 
     queue_delayed_work_on(0, wq, &decide_hotplug, sampling_timer);
@@ -160,9 +173,9 @@ static void __cpuinit decide_hotplug_func(struct work_struct *work)
 
 static void mako_hotplug_early_suspend(struct early_suspend *handler)
 {
-    static int cpu = 0;
-	
-    //cancel the hotplug work when the screen is off
+    unsigned int cpu = nr_cpu_ids;
+	 
+    /* cancel the hotplug work when the screen is off and flush the WQ */
     flush_workqueue(wq);
     cancel_delayed_work_sync(&decide_hotplug);
     pr_info("Early Suspend stopping Hotplug work...");
@@ -182,18 +195,19 @@ static void mako_hotplug_early_suspend(struct early_suspend *handler)
         }
 	}
     
-    //cap max frequency to 702MHz
+    /* cap max frequency to 702MHz by default */
     msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, suspend_freq);
-    pr_info("Cpulimit: Early suspend - limit cpu%d max frequency to: %dMHz\n", 0, suspend_freq/1000);
+    pr_info("Cpulimit: Early suspend - limit cpu%d max frequency to: %dMHz\n",
+            0, suspend_freq/1000);
     
     stats.online_cpus = num_online_cpus();
 }
 
 static void __cpuinit mako_hotplug_late_resume(struct early_suspend *handler)
 {
-    static int cpu = 0;
+    unsigned int cpu = nr_cpu_ids;
     
-    //online cpu1 when the screen goes online
+    /* online all cores when the screen goes online */
     for_each_possible_cpu(cpu)
     {
         if (cpu)
@@ -206,11 +220,11 @@ static void __cpuinit mako_hotplug_late_resume(struct early_suspend *handler)
         }
     }
     
-    //restore default 1,5GHz max frequency
+    /* restore default 1,5GHz max frequency */
     msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, MSM_CPUFREQ_NO_LIMIT);
     pr_info("Cpulimit: Late resume - restore cpu%d max frequency.\n", 0);
     
-    //new time_stamp because all cpus were just onlined
+    /* new time_stamp because all cpus were just onlined */
     stats.time_stamp = ktime_to_ms(ktime_get());
     
     pr_info("Late Resume starting Hotplug work...\n");
@@ -223,7 +237,7 @@ static struct early_suspend mako_hotplug_suspend =
 	.resume = mako_hotplug_late_resume,
 };
 
-//these come from the sysfs driver that exports the thresholds to userspace
+/* these come from the sysfs driver that exports the thresholds to userspace */
 void update_first_level(unsigned int level)
 {
     default_first_level = level;
@@ -243,12 +257,21 @@ void update_suspend_freq(unsigned int freq)
 {
     suspend_freq = freq;
 }
-//end sysfs functions from external driver
+/* end sysfs functions from external driver */
 
 int __init mako_hotplug_init(void)
 {
 	pr_info("Mako Hotplug driver started.\n");
-        
+    
+    /* init everything here */
+    stats.time_stamp = 0;
+    stats.online_cpus = num_online_cpus();
+    stats.total_cpus = num_present_cpus();
+    default_first_level = DEFAULT_FIRST_LEVEL;
+    default_second_level = DEFAULT_SECOND_LEVEL;
+    default_third_level = DEFAULT_THIRD_LEVEL;
+    suspend_freq = DEFAULT_SUSPEND_FREQ;
+    
     wq = alloc_workqueue("mako_hotplug_workqueue",
                          WQ_UNBOUND | WQ_RESCUER | WQ_FREEZABLE, 1);
     
@@ -256,12 +279,6 @@ int __init mako_hotplug_init(void)
         return -ENOMEM;
     
     INIT_DELAYED_WORK(&decide_hotplug, decide_hotplug_func);
-    
-    //init the struct members
-    stats.time_stamp = 0;
-    stats.online_cpus = num_online_cpus();
-    stats.total_cpus = num_present_cpus();
-
     queue_delayed_work_on(0, wq, &decide_hotplug, HZ*25);
     
     register_early_suspend(&mako_hotplug_suspend);
