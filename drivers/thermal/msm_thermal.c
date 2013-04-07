@@ -46,8 +46,8 @@ static void check_temp(struct work_struct *work)
 {
 	struct tsens_device tsens_dev;
 	unsigned long temp = 0;
-	int cpu = 0;
-	policy = cpufreq_cpu_get(0);
+	unsigned int cpu = 0;
+	policy = cpufreq_cpu_get(cpu);
 	max_freq = policy->max;
 	
 	if (freq_buffer == 0)
@@ -62,7 +62,7 @@ static void check_temp(struct work_struct *work)
 		polling = HZ/8;
 	}
 	//temperature is high, lets throttle even more and poll faster (every .25s)
-	if (temp >= temp_threshold) {
+	else if (temp >= temp_threshold) {
 		max_freq = 1026000;
 		polling = HZ/4;
 	} 
