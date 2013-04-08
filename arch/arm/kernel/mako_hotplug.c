@@ -21,10 +21,10 @@
 #define DEFAULT_FIRST_LEVEL 90
 unsigned int default_first_level;
 
-#define DEFAULT_SECOND_LEVEL 50
+#define DEFAULT_SECOND_LEVEL 25
 unsigned int default_second_level;
 
-#define DEFAULT_THIRD_LEVEL 30
+#define DEFAULT_THIRD_LEVEL 50
 unsigned int default_third_level;
 
 #define DEFAULT_SUSPEND_FREQ 702000
