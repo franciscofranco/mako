@@ -18,6 +18,8 @@
 /* threshold for comparing time diffs is 2 seconds */
 #define SEC_THRESHOLD 2000
 
+#define HISTORY_SIZE 10
+
 #define DEFAULT_FIRST_LEVEL 90
 unsigned int default_first_level;
 
@@ -52,6 +54,9 @@ static struct workqueue_struct *wq;
 
 static struct delayed_work decide_hotplug;
 
+unsigned int load_history[HISTORY_SIZE];
+unsigned int counter;
+
 static void first_level_work_check(unsigned long temp_diff, unsigned long now)
 {
     unsigned int cpu = nr_cpu_ids;
@@ -65,7 +70,7 @@ static void first_level_work_check(unsigned long temp_diff, unsigned long now)
                 if (!cpu_online(cpu))
                 {
                     cpu_up(cpu);
-                    pr_info("Hotplug: cpu%d is up\n", cpu);
+                    pr_info("Hotplug: cpu%d is up - high load\n", cpu);
                 }
             }
         }
@@ -82,7 +87,7 @@ static void second_level_work_check(unsigned long temp_diff, unsigned long now)
 {
     unsigned int cpu = nr_cpu_ids;
     
-    if ((now - stats.time_stamp) >= temp_diff)
+    if (stats.online_cpus < 2 || (now - stats.time_stamp) >= temp_diff)
     {
         for_each_possible_cpu(cpu)
         {
@@ -91,7 +96,7 @@ static void second_level_work_check(unsigned long temp_diff, unsigned long now)
                 if (!cpu_online(cpu))
                 {
                     cpu_up(cpu);
-                    pr_info("Hotplug: cpu%d is up\n", cpu);
+                    pr_info("Hotplug: cpu%d is up - medium load\n", cpu);
                     break;
                 }
             }
@@ -114,7 +119,7 @@ static void third_level_work_check(unsigned long temp_diff, unsigned long now)
                 if (cpu_online(cpu))
                 {
                     cpu_down(cpu);
-                    pr_info("Hotplug: cpu%d is down\n", cpu);
+                    pr_info("Hotplug: cpu%d is down - low load\n", cpu);
                 }
             }
         }
@@ -125,50 +130,63 @@ static void third_level_work_check(unsigned long temp_diff, unsigned long now)
 
 static void __cpuinit decide_hotplug_func(struct work_struct *work)
 {
-    unsigned long now, temp_diff, sampling_timer;
-    unsigned int load, first_level, second_level, third_level;
+    unsigned long now;
+    unsigned int k, first_level, second_level, third_level;
+    static unsigned int load = 0;
+    
+    /* start feeding the current load to the history array so that we can
+       make a little average. Works good for filtering low and/or high load
+       spikes */
+    if (counter++ == HISTORY_SIZE)
+        counter = 0;
+    
+    load_history[counter] = report_load_at_max_freq();
         
-    /* load polled in this sampling time */
-    load = report_load_at_max_freq();
+    for (k = 0; k < HISTORY_SIZE; k++)
+        load += load_history[k];
+    
+    load = load/HISTORY_SIZE;
+    /* finish load routines */
     
     /* time of this sampling time */
     now = ktime_to_ms(ktime_get());
+    
+    stats.online_cpus = num_online_cpus();
     
     /* the load thresholds scale with the number of online cpus */
     first_level = default_first_level * stats.online_cpus;
     second_level = default_second_level * stats.online_cpus;
     third_level = default_third_level * stats.online_cpus;
-    
-    /* init temp_diff for the allowance of hotplug or not */
-    temp_diff = SEC_THRESHOLD/stats.online_cpus;
-    
-    /* jiffies count for how often the decision work is called */
-    sampling_timer = HZ/stats.online_cpus;
         
-    if (load >= first_level && stats.online_cpus < stats.total_cpus)
+    if (load >= first_level)
     {
-        first_level_work_check(temp_diff, now);
-        queue_delayed_work_on(0, wq, &decide_hotplug, sampling_timer);
+        first_level_work_check(SEC_THRESHOLD, now);
+        queue_delayed_work_on(0, wq, &decide_hotplug, msecs_to_jiffies(HZ));
         return;
     }
     
     /* load is medium-high so online only one core at a time */
-    else if (load >= second_level && stats.online_cpus < stats.total_cpus)
+    else if (load >= second_level)
     {
-        second_level_work_check(temp_diff, now);
-        queue_delayed_work_on(0, wq, &decide_hotplug, sampling_timer);
+        /* feed it 2 times the seconds threshold because when this is called
+           there is a check inside that onlines cpu1 bypassing the time_diff
+           but afterwards it takes at least 4 seconds as threshold before
+           onlining another cpu. This eliminates unneeded onlining when we are
+           for example swipping between home or app drawer and we only need
+           cpu0 and cpu1 online for that, cpufreq takes care of the rest */
+        
+        second_level_work_check(SEC_THRESHOLD*2, now);
+        queue_delayed_work_on(0, wq, &decide_hotplug, msecs_to_jiffies(HZ));
         return;
     }
     
     /* low load obliterate the cpus to death */
     else if (load <= third_level && stats.online_cpus > 1)
     {
-        third_level_work_check(temp_diff, now);
+        third_level_work_check(SEC_THRESHOLD, now);
     }
-        
-    stats.online_cpus = num_online_cpus();
 
-    queue_delayed_work_on(0, wq, &decide_hotplug, sampling_timer);
+    queue_delayed_work_on(0, wq, &decide_hotplug, msecs_to_jiffies(HZ));
 }
 
 static void mako_hotplug_early_suspend(struct early_suspend *handler)
@@ -224,8 +242,9 @@ static void __cpuinit mako_hotplug_late_resume(struct early_suspend *handler)
     msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, MSM_CPUFREQ_NO_LIMIT);
     pr_info("Cpulimit: Late resume - restore cpu%d max frequency.\n", 0);
     
-    /* new time_stamp because all cpus were just onlined */
+    /* new time_stamp and online_cpu because all cpus were just onlined */
     stats.time_stamp = ktime_to_ms(ktime_get());
+    stats.online_cpus = num_online_cpus();
     
     pr_info("Late Resume starting Hotplug work...\n");
     queue_delayed_work_on(0, wq, &decide_hotplug, HZ);
