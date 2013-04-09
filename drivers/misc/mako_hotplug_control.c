@@ -13,8 +13,8 @@
 #define MAKO_HOTPLUG_CONTROL_VERSION 1
 
 unsigned int first_level = 90;
-unsigned int second_level = 50;
-unsigned int third_level = 30;
+unsigned int second_level = 25;
+unsigned int third_level = 50;
 
 unsigned int suspend_frequency = 702000;
 
