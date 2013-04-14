@@ -46,8 +46,8 @@ static void check_temp(struct work_struct *work)
 {
 	struct tsens_device tsens_dev;
 	unsigned long temp = 0;
-	unsigned int cpu = 0;
-	policy = cpufreq_cpu_get(cpu);
+    unsigned int cpu;
+	policy = cpufreq_cpu_get(0);
 	max_freq = policy->max;
 	
 	if (freq_buffer == 0)
@@ -77,7 +77,7 @@ static void check_temp(struct work_struct *work)
 
 	if (max_freq < freq_buffer || max_freq > freq_buffer) {
 		freq_buffer = max_freq;
-		for_each_possible_cpu(cpu) {
+		for_each_online_cpu(cpu) {
 			msm_cpufreq_set_freq_limits(cpu, MSM_CPUFREQ_NO_LIMIT, max_freq);
 			pr_info("msm_thermal: max cpu%d frequency changes to %dMHz - polling every %dms", cpu, max_freq/1000, jiffies_to_msecs(polling));
 		}
@@ -95,7 +95,7 @@ int __devinit msm_thermal_init(struct msm_thermal_data *pdata)
 	memcpy(&msm_thermal_info, pdata, sizeof(struct msm_thermal_data));
 
 	INIT_DELAYED_WORK(&check_temp_work, check_temp);
-	schedule_delayed_work(&check_temp_work, HZ*20);
+	schedule_delayed_work_on(0, &check_temp_work, HZ*30);
 
 	return ret;
 }
