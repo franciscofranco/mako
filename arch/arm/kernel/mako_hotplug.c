@@ -16,6 +16,14 @@
 #include <mach/cpufreq.h>
 #include <linux/rq_stats.h>
 
+/* threshold for comparing time diffs is 2 seconds */
+#define SEC_THRESHOLD 2000
+#define HISTORY_SIZE 10
+#define DEFAULT_FIRST_LEVEL 90
+#define DEFAULT_SECOND_LEVEL 25
+#define DEFAULT_THIRD_LEVEL 50
+#define DEFAULT_SUSPEND_FREQ 702000
+
 /*
  * TODO probably populate the struct with more relevant data
  */
@@ -23,30 +31,13 @@ struct cpu_stats
 {
     /* variable to be accessed to filter spurious load spikes */
     unsigned long time_stamp;
-    
     unsigned int online_cpus;
-    
     unsigned int total_cpus;
+    unsigned int default_first_level;
+    unsigned int default_second_level;
+    unsigned int default_third_level;
+    unsigned int suspend_frequency;
 };
-
-/* threshold for comparing time diffs is 2 seconds */
-#define SEC_THRESHOLD 2000
-
-#define HISTORY_SIZE 10
-
-#define DEFAULT_FIRST_LEVEL 90
-unsigned int default_first_level;
-
-#define DEFAULT_SECOND_LEVEL 25
-unsigned int default_second_level;
-
-#define DEFAULT_THIRD_LEVEL 50
-unsigned int default_third_level;
-
-#define DEFAULT_SUSPEND_FREQ 702000
-unsigned int suspend_frequency;
-
-unsigned int placeholder;
 
 static struct cpu_stats stats;
 
@@ -54,8 +45,8 @@ static struct workqueue_struct *wq;
 
 static struct delayed_work decide_hotplug;
 
-unsigned int load_history[HISTORY_SIZE];
-unsigned int counter;
+unsigned int load_history[HISTORY_SIZE] = {0};
+unsigned int counter = 0;
 
 static void first_level_work_check(unsigned long temp_diff, unsigned long now)
 {
@@ -128,32 +119,40 @@ static void third_level_work_check(unsigned long temp_diff, unsigned long now)
 static void decide_hotplug_func(struct work_struct *work)
 {
     unsigned long now;
-    unsigned int k, first_level, second_level, third_level, load = 0;
+    unsigned int i, first_level, second_level, third_level, load = 0;
     
     /* start feeding the current load to the history array so that we can
-       make a little average. Works good for filtering low and/or high load
-       spikes */
-    if (counter++ == HISTORY_SIZE)
-        counter = 0;
-    
-    load_history[counter] = report_load_at_max_freq();
+     make a little average. Works good for filtering low and/or high load
+     spikes */
+    load_history[counter++] = report_load_at_max_freq();
         
-    for (k = 0; k < HISTORY_SIZE; k++)
-        load += load_history[k];
+    for (i = 0; i < HISTORY_SIZE; i++)
+        load += load_history[i];
     
     load = load/HISTORY_SIZE;
     /* finish load routines */
-    
+        
     /* time of this sampling time */
     now = ktime_to_ms(ktime_get());
     
     stats.online_cpus = num_online_cpus();
     
     /* the load thresholds scale with the number of online cpus */
-    first_level = default_first_level * stats.online_cpus;
-    second_level = default_second_level * stats.online_cpus;
-    third_level = default_third_level * stats.online_cpus;
-        
+    first_level = stats.default_first_level * stats.online_cpus;
+    second_level = stats.default_second_level * stats.online_cpus;
+    third_level = stats.default_third_level * stats.online_cpus;
+    
+    if (counter == HISTORY_SIZE)
+        counter = 0;
+    
+    /*
+    pr_info("LOAD: %d\n", load);
+    pr_info("FIRST: %d\n", first_level);
+    pr_info("SECOND: %d\n", second_level);
+    pr_info("THIRD: %d\n", third_level);
+    pr_info("COUNTER: %d\n", counter); 
+    */
+    
     if (load >= first_level)
     {
         first_level_work_check(SEC_THRESHOLD, now);
@@ -181,7 +180,7 @@ static void decide_hotplug_func(struct work_struct *work)
     {
         third_level_work_check(SEC_THRESHOLD, now);
     }
-
+    
     queue_delayed_work_on(0, wq, &decide_hotplug, msecs_to_jiffies(HZ));
 }
 
@@ -196,23 +195,20 @@ static void mako_hotplug_early_suspend(struct early_suspend *handler)
     
     if (num_online_cpus() > 1)
     {
-        for_each_possible_cpu(cpu)
+        for_each_online_cpu(cpu)
         {
             if (cpu)
             {
-                if (cpu_online(cpu))
-                {
-                    cpu_down(cpu);
-                    pr_info("Early Suspend Hotplug: cpu%d is down\n", cpu);
-                }
+                cpu_down(cpu);
+                pr_info("Early Suspend Hotplug: cpu%d is down\n", cpu);
             }
         }
 	}
     
     /* cap max frequency to 702MHz by default */
-    msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, suspend_frequency);
+    msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, stats.suspend_frequency);
     pr_info("Cpulimit: Early suspend - limit cpu%d max frequency to: %dMHz\n",
-            0, suspend_frequency/1000);
+            0, stats.suspend_frequency/1000);
     
     stats.online_cpus = num_online_cpus();
 }
@@ -255,42 +251,42 @@ static struct early_suspend mako_hotplug_suspend =
 /* sysfs functions for external driver */
 void update_first_level(unsigned int level)
 {
-    default_first_level = level;
+    stats.default_first_level = level;
 }
 
 void update_second_level(unsigned int level)
 {
-    default_second_level = level;
+    stats.default_second_level = level;
 }
 
 void update_third_level(unsigned int level)
 {
-    default_third_level = level;
+    stats.default_third_level = level;
 }
 
 void update_suspend_frequency(unsigned int freq)
 {
-    suspend_frequency = freq;
+    stats.suspend_frequency = freq;
 }
 
 inline unsigned int get_first_level(void)
 {
-    return default_first_level;
+    return stats.default_first_level;
 }
 
 inline unsigned int get_second_level(void)
 {
-    return default_second_level;
+    return stats.default_second_level;
 }
 
 inline unsigned int get_third_level(void)
 {
-    return default_third_level;
+    return stats.default_third_level;
 }
 
 inline unsigned int get_suspend_frequency(void)
 {
-    return suspend_frequency;
+    return stats.suspend_frequency;
 }
 /* end sysfs functions from external driver */
 
@@ -302,10 +298,10 @@ int __init mako_hotplug_init(void)
     stats.time_stamp = 0;
     stats.online_cpus = num_online_cpus();
     stats.total_cpus = num_present_cpus();
-    default_first_level = DEFAULT_FIRST_LEVEL;
-    default_second_level = DEFAULT_SECOND_LEVEL;
-    default_third_level = DEFAULT_THIRD_LEVEL;
-    suspend_frequency = DEFAULT_SUSPEND_FREQ;
+    stats.default_first_level = DEFAULT_FIRST_LEVEL;
+    stats.default_second_level = DEFAULT_SECOND_LEVEL;
+    stats.default_third_level = DEFAULT_THIRD_LEVEL;
+    stats.suspend_frequency = DEFAULT_SUSPEND_FREQ;
     
     wq = alloc_workqueue("mako_hotplug_workqueue",
                          WQ_UNBOUND | WQ_RESCUER | WQ_FREEZABLE, 1);
