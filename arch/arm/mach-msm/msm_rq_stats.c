@@ -156,7 +156,6 @@ static int update_average_load(unsigned int freq, unsigned int cpu)
 	return 0;
 }
 
-extern unsigned int report_load_at_max_freq(void);
 unsigned int report_load_at_max_freq(void)
 {
 	int cpu;
