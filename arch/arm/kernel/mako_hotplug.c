@@ -45,6 +45,12 @@ static struct workqueue_struct *wq;
 
 static struct delayed_work decide_hotplug;
 
+/* hooks to scale interactive tunables based on load */
+void scale_above_hispeed_delay(bool increase);
+void scale_go_hispeed_load(bool increase);
+void scale_timer_rate(bool increase);
+void scale_min_sample_time(bool increase);
+
 unsigned int load_history[HISTORY_SIZE] = {0};
 unsigned int counter = 0;
 
@@ -52,8 +58,17 @@ static void first_level_work_check(unsigned long temp_diff, unsigned long now)
 {
     unsigned int cpu = nr_cpu_ids;
     
+    /* lets bail if all cores are online */
+    if (stats.online_cpus == stats.total_cpus)
+        return;
+
     if ((now - stats.time_stamp) >= temp_diff)
     {
+        scale_above_hispeed_delay(false);
+        scale_go_hispeed_load(false);
+        scale_timer_rate(false);
+        scale_min_sample_time(true);
+
         for_each_possible_cpu(cpu)
         {
             if (cpu)
@@ -65,11 +80,7 @@ static void first_level_work_check(unsigned long temp_diff, unsigned long now)
                 }
             }
         }
-        
-        /*
-         * new current time for comparison in the next load check
-         * we don't want too many hot[in]plugs in small time span
-         */
+
         stats.time_stamp = now;
     }
 }
@@ -78,8 +89,20 @@ static void second_level_work_check(unsigned long temp_diff, unsigned long now)
 {
     unsigned int cpu = nr_cpu_ids;
     
+    /* lets bail if all cores are online */
+    if (stats.online_cpus == stats.total_cpus)
+        return;
+
     if (stats.online_cpus < 2 || (now - stats.time_stamp) >= temp_diff)
     {
+        if (stats.online_cpus == 3) 
+        {
+            scale_above_hispeed_delay(false);
+            scale_go_hispeed_load(false);
+            scale_timer_rate(false);
+            scale_min_sample_time(true);
+        }
+        
         for_each_possible_cpu(cpu)
         {
             if (cpu)
@@ -92,7 +115,7 @@ static void second_level_work_check(unsigned long temp_diff, unsigned long now)
                 }
             }
         }
-        
+
         stats.time_stamp = now;
     }
 }
@@ -100,9 +123,18 @@ static void second_level_work_check(unsigned long temp_diff, unsigned long now)
 static void third_level_work_check(unsigned long temp_diff, unsigned long now)
 {
     unsigned int cpu = nr_cpu_ids;
-    
+
+    /* lets bail if all cores are offline */
+    if (stats.online_cpus == 1)
+        return;
+
     if ((now - stats.time_stamp) >= temp_diff)
     {
+        scale_above_hispeed_delay(true);
+        scale_go_hispeed_load(true);
+        scale_timer_rate(true);
+        scale_min_sample_time(false);
+        
         for_each_online_cpu(cpu)
         {
             if (cpu)
@@ -111,7 +143,7 @@ static void third_level_work_check(unsigned long temp_diff, unsigned long now)
                 pr_info("Hotplug: cpu%d is down - low load\n", cpu);
             }
         }
-        
+
         stats.time_stamp = now;
     }
 }
