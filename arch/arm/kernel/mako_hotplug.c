@@ -243,19 +243,33 @@ static void mako_hotplug_early_suspend(struct early_suspend *handler)
             stats.suspend_frequency);
     pr_info("Cpulimit: Early suspend - limit cpu%d max frequency to: %dMHz\n",
             0, stats.suspend_frequency/1000);
-    
-    stats.online_cpus = num_online_cpus();
-    stats.time_stamp = ktime_to_ms(ktime_get());
 }
 
 static void mako_hotplug_late_resume(struct early_suspend *handler)
-{   
+{  
+    unsigned int cpu = nr_cpu_ids;
+    
+    /* online all cores when the screen goes online */
+    for_each_possible_cpu(cpu)
+    {
+        if (cpu)
+        {
+            if (!cpu_online(cpu))
+            {
+                cpu_up(cpu);
+                pr_info("Late Resume Hotplug: cpu%d is up\n", cpu);
+            }
+        }
+    }
+
+    stats.time_stamp = ktime_to_ms(ktime_get());
+
     /* restore default 1,5GHz max frequency */
     msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, MSM_CPUFREQ_NO_LIMIT);
     pr_info("Cpulimit: Late resume - restore cpu%d max frequency.\n", 0);
     
     pr_info("Late Resume starting Hotplug work...\n");
-    queue_delayed_work_on(0, wq, &decide_hotplug, 0);
+    queue_delayed_work_on(0, wq, &decide_hotplug, HZ);
 }
 
 static struct early_suspend mako_hotplug_suspend =
