@@ -15,6 +15,7 @@
 #include <linux/earlysuspend.h>
 #include <mach/cpufreq.h>
 #include <linux/rq_stats.h>
+#include <linux/cpufreq.h>
 
 /* threshold for comparing time diffs is 2 seconds */
 #define SEC_THRESHOLD 2000
@@ -45,14 +46,18 @@ static struct workqueue_struct *wq;
 
 static struct delayed_work decide_hotplug;
 
-/* hooks to scale interactive tunables based on load */
-void scale_above_hispeed_delay(bool increase);
-void scale_go_hispeed_load(bool increase);
-void scale_timer_rate(bool increase);
-void scale_min_sample_time(bool increase);
-
 unsigned int load_history[HISTORY_SIZE] = {0};
 unsigned int counter = 0;
+
+static void scale_interactive_tunables(unsigned int above_hispeed_delay,
+    unsigned int go_hispeed_load, unsigned int timer_rate, 
+    unsigned int min_sample_time)
+{
+    scale_above_hispeed_delay(above_hispeed_delay);
+    scale_go_hispeed_load(go_hispeed_load);
+    scale_timer_rate(timer_rate);
+    scale_min_sample_time(min_sample_time);
+}
 
 static void first_level_work_check(unsigned long temp_diff, unsigned long now)
 {
@@ -64,11 +69,6 @@ static void first_level_work_check(unsigned long temp_diff, unsigned long now)
 
     if ((now - stats.time_stamp) >= temp_diff)
     {
-        scale_above_hispeed_delay(false);
-        scale_go_hispeed_load(false);
-        scale_timer_rate(false);
-        scale_min_sample_time(true);
-
         for_each_possible_cpu(cpu)
         {
             if (cpu)
@@ -80,6 +80,8 @@ static void first_level_work_check(unsigned long temp_diff, unsigned long now)
                 }
             }
         }
+
+        scale_interactive_tunables(0, 80, 10, 80);
 
         stats.time_stamp = now;
     }
@@ -94,15 +96,7 @@ static void second_level_work_check(unsigned long temp_diff, unsigned long now)
         return;
 
     if (stats.online_cpus < 2 || (now - stats.time_stamp) >= temp_diff)
-    {
-        if (stats.online_cpus == 3) 
-        {
-            scale_above_hispeed_delay(false);
-            scale_go_hispeed_load(false);
-            scale_timer_rate(false);
-            scale_min_sample_time(true);
-        }
-        
+    {   
         for_each_possible_cpu(cpu)
         {
             if (cpu)
@@ -115,6 +109,12 @@ static void second_level_work_check(unsigned long temp_diff, unsigned long now)
                 }
             }
         }
+
+        if (stats.online_cpus == 1)
+            scale_interactive_tunables(50, 99, 30, 20);
+ 
+        else if (stats.online_cpus == 3) 
+            scale_interactive_tunables(0, 80, 10, 80);
 
         stats.time_stamp = now;
     }
@@ -129,12 +129,7 @@ static void third_level_work_check(unsigned long temp_diff, unsigned long now)
         return;
 
     if ((now - stats.time_stamp) >= temp_diff)
-    {
-        scale_above_hispeed_delay(true);
-        scale_go_hispeed_load(true);
-        scale_timer_rate(true);
-        scale_min_sample_time(false);
-        
+    {   
         for_each_online_cpu(cpu)
         {
             if (cpu)
@@ -143,6 +138,8 @@ static void third_level_work_check(unsigned long temp_diff, unsigned long now)
                 pr_info("Hotplug: cpu%d is down - low load\n", cpu);
             }
         }
+
+        scale_interactive_tunables(15, 99, 25, 40);
 
         stats.time_stamp = now;
     }
@@ -242,40 +239,23 @@ static void mako_hotplug_early_suspend(struct early_suspend *handler)
 	}
     
     /* cap max frequency to 702MHz by default */
-    msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, stats.suspend_frequency);
+    msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, 
+            stats.suspend_frequency);
     pr_info("Cpulimit: Early suspend - limit cpu%d max frequency to: %dMHz\n",
             0, stats.suspend_frequency/1000);
     
     stats.online_cpus = num_online_cpus();
+    stats.time_stamp = ktime_to_ms(ktime_get());
 }
 
 static void mako_hotplug_late_resume(struct early_suspend *handler)
-{
-    unsigned int cpu = nr_cpu_ids;
-    
-    /* online all cores when the screen goes online */
-    for_each_possible_cpu(cpu)
-    {
-        if (cpu)
-        {
-            if (!cpu_online(cpu))
-            {
-                cpu_up(cpu);
-                pr_info("Late Resume Hotplug: cpu%d is up\n", cpu);
-            }
-        }
-    }
-    
+{   
     /* restore default 1,5GHz max frequency */
     msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, MSM_CPUFREQ_NO_LIMIT);
     pr_info("Cpulimit: Late resume - restore cpu%d max frequency.\n", 0);
     
-    /* new time_stamp and online_cpu because all cpus were just onlined */
-    stats.time_stamp = ktime_to_ms(ktime_get());
-    stats.online_cpus = num_online_cpus();
-    
     pr_info("Late Resume starting Hotplug work...\n");
-    queue_delayed_work_on(0, wq, &decide_hotplug, HZ);
+    queue_delayed_work_on(0, wq, &decide_hotplug, 0);
 }
 
 static struct early_suspend mako_hotplug_suspend =
