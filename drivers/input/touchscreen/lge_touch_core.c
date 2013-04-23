@@ -830,10 +830,7 @@ static void touch_work_func(struct work_struct *work)
 		int_pin = gpio_get_value(ts->pdata->int_pin);
 
 	/* Accuracy Solution */
-	if (likely(ts->pdata->role->accuracy_filter_enable)) {
-		if (accuracy_filter_func(ts) < 0)
-			goto out;
-	}
+	accuracy_filter_func(ts);
 
 	/* Jitter Solution */
 	if (likely(ts->pdata->role->jitter_filter_enable)) {
@@ -1992,24 +1989,22 @@ static int touch_probe(struct i2c_client *client,
 	touch_ic_init(ts);
 
 	/* Firmware Upgrade Check - use thread for booting time reduction */
-	if (touch_device_func->fw_upgrade) {
+	if (unlikely(touch_device_func->fw_upgrade)) {
 		queue_work(touch_wq, &ts->work_fw_upgrade);
 	}
 
 	/* jitter solution */
-	if (ts->pdata->role->jitter_filter_enable) {
+	if (unlikely(ts->pdata->role->jitter_filter_enable)) {
 		ts->jitter_filter.adjust_margin = 100;
 	}
 
 	/* accuracy solution */
-	if (ts->pdata->role->accuracy_filter_enable) {
-		ts->accuracy_filter.ignore_pressure_gap = 5;
-		ts->accuracy_filter.delta_max = 50;
-		ts->accuracy_filter.max_pressure = 55;
-		ts->accuracy_filter.time_to_max_pressure = 1;
-		ts->accuracy_filter.direction_count = 8;
-		ts->accuracy_filter.touch_max_count = 4;
-	}
+	ts->accuracy_filter.ignore_pressure_gap = 0;
+	ts->accuracy_filter.delta_max = 0;
+	ts->accuracy_filter.max_pressure = 0;
+	ts->accuracy_filter.time_to_max_pressure = 200;
+	ts->accuracy_filter.direction_count = 20;
+	ts->accuracy_filter.touch_max_count = 40;
 
 #if defined(CONFIG_HAS_EARLYSUSPEND)
 	ts->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
@@ -2114,7 +2109,7 @@ static void touch_early_suspend(struct early_suspend *h)
 
 	ts->curr_resume_state = 0;
 
-	if (ts->fw_upgrade.is_downloading == UNDER_DOWNLOADING) {
+	if (unlikely(ts->fw_upgrade.is_downloading == UNDER_DOWNLOADING)) {
 		TOUCH_INFO_MSG("early_suspend is not executed\n");
 		return;
 	}
@@ -2125,7 +2120,8 @@ static void touch_early_suspend(struct early_suspend *h)
 		hrtimer_cancel(&ts->timer);
 
 	cancel_work_sync(&ts->work);
-	cancel_delayed_work_sync(&ts->work_init);
+	if (delayed_work_pending(&ts->work_init))
+		cancel_delayed_work_sync(&ts->work_init);
 	if (ts->pdata->role->key_type == TOUCH_HARD_KEY)
 		cancel_delayed_work_sync(&ts->work_touch_lock);
 
@@ -2144,7 +2140,7 @@ static void touch_late_resume(struct early_suspend *h)
 
 	ts->curr_resume_state = 1;
 
-	if (ts->fw_upgrade.is_downloading == UNDER_DOWNLOADING) {
+	if (unlikely(ts->fw_upgrade.is_downloading == UNDER_DOWNLOADING)) {
 		TOUCH_INFO_MSG("late_resume is not executed\n");
 		return;
 	}
@@ -2157,12 +2153,8 @@ static void touch_late_resume(struct early_suspend *h)
 		hrtimer_start(&ts->timer,
 			ktime_set(0, ts->pdata->role->report_period),
 					HRTIMER_MODE_REL);
-
-	if (ts->pdata->role->resume_pwr == POWER_ON)
-		queue_delayed_work(touch_wq, &ts->work_init,
-			msecs_to_jiffies(ts->pdata->role->booting_delay));
-	else
-		queue_delayed_work(touch_wq, &ts->work_init, 0);
+	
+	touch_ic_init(ts);
 }
 #endif
 
