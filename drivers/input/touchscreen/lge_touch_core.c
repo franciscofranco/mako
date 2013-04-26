@@ -50,6 +50,7 @@ struct lge_touch_attribute {
 static int is_pressure;
 static int is_width_major;
 static int is_width_minor;
+static bool is_screen_locked;
 
 #define LGE_TOUCH_ATTR(_name, _mode, _show, _store)               \
 	struct lge_touch_attribute lge_touch_attr_##_name =       \
@@ -786,6 +787,9 @@ static void touch_input_report(struct lge_touch_data *ts)
 		}
 	}
 
+	if (is_screen_locked)
+		is_screen_locked = false;
+
 	input_sync(ts->input_dev);
 }
 
@@ -830,10 +834,8 @@ static void touch_work_func(struct work_struct *work)
 		int_pin = gpio_get_value(ts->pdata->int_pin);
 
 	/* Accuracy Solution */
-	if (likely(ts->pdata->role->accuracy_filter_enable)) {
-		if (accuracy_filter_func(ts) < 0)
-			goto out;
-	}
+	if (!is_screen_locked)
+		accuracy_filter_func(ts);
 
 	/* Jitter Solution */
 	if (likely(ts->pdata->role->jitter_filter_enable)) {
@@ -1868,6 +1870,8 @@ static int touch_probe(struct i2c_client *client,
 
 	ts->fw_info.fw_force_rework = false;
 
+	is_screen_locked = false;
+
 	/* Specific device probe */
 	if (touch_device_func->probe) {
 		ret = touch_device_func->probe(client);
@@ -2002,14 +2006,12 @@ static int touch_probe(struct i2c_client *client,
 	}
 
 	/* accuracy solution */
-	if (ts->pdata->role->accuracy_filter_enable) {
-		ts->accuracy_filter.ignore_pressure_gap = 5;
-		ts->accuracy_filter.delta_max = 50;
-		ts->accuracy_filter.max_pressure = 55;
-		ts->accuracy_filter.time_to_max_pressure = 1;
-		ts->accuracy_filter.direction_count = 8;
-		ts->accuracy_filter.touch_max_count = 4;
-	}
+	ts->accuracy_filter.ignore_pressure_gap = 0;
+    ts->accuracy_filter.delta_max = 0;
+    ts->accuracy_filter.max_pressure = 0;
+    ts->accuracy_filter.time_to_max_pressure = 200;
+    ts->accuracy_filter.direction_count = 20;
+    ts->accuracy_filter.touch_max_count = 40;
 
 #if defined(CONFIG_HAS_EARLYSUSPEND)
 	ts->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
@@ -2113,6 +2115,8 @@ static void touch_early_suspend(struct early_suspend *h)
 		TOUCH_DEBUG_MSG("\n");
 
 	ts->curr_resume_state = 0;
+
+	is_screen_locked = true;
 
 	if (ts->fw_upgrade.is_downloading == UNDER_DOWNLOADING) {
 		TOUCH_INFO_MSG("early_suspend is not executed\n");
