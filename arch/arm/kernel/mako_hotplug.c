@@ -213,8 +213,6 @@ static void mako_hotplug_early_suspend(struct early_suspend *handler)
     cancel_delayed_work_sync(&decide_hotplug);
     pr_info("Early Suspend stopping Hotplug work...\n");
     
-    msleep(2000);
-
     third_level_work_check(0, ktime_to_ms(ktime_get()));
     
     /* cap max frequency to 702MHz by default */
