@@ -29,6 +29,7 @@
 #include <linux/types.h>
 #include <linux/time.h>
 #include <linux/version.h>
+#include <linux/cpufreq.h>
 
 #include <asm/atomic.h>
 #include <linux/gpio.h>
@@ -793,6 +794,9 @@ static void touch_input_report(struct lge_touch_data *ts)
 	input_sync(ts->input_dev);
 }
 
+#define BOOST_FREQ 1026000
+static struct cpufreq_policy *policy;
+
 /*
  * Touch work function
  */
@@ -803,10 +807,11 @@ static void touch_work_func(struct work_struct *work)
 	int int_pin = 0;
 	int next_work = 0;
 	int ret;
-	/*static unsigned int x = 0;
+	static unsigned int x = 0;
 	static unsigned int y = 0;
 	static bool flag = false;
-	static bool xy_lock = false;*/
+	static bool xy_lock = false;
+	policy = cpufreq_cpu_get(0);
 
 	atomic_dec(&ts->next_work);
 	ts->ts_data.total_num = 0;
@@ -845,7 +850,7 @@ static void touch_work_func(struct work_struct *work)
 
 	touch_input_report(ts);
 	
-	/*if (ts->ts_data.curr_data[0].state == ABS_PRESS) {
+	if (ts->ts_data.curr_data[0].state == ABS_PRESS) {
 		if(!xy_lock) {
 			x = ts->ts_data.curr_data[0].x_position;
 			y = ts->ts_data.curr_data[0].y_position;
@@ -853,10 +858,14 @@ static void touch_work_func(struct work_struct *work)
 		}
 			
 		if (ts->ts_data.curr_data[0].x_position > (x + 100) || ts->ts_data.curr_data[0].x_position < (x - 100)) {
-			hotplug_boostpulse();
+			if (policy->cur < BOOST_FREQ)
+				__cpufreq_driver_target(policy, BOOST_FREQ, CPUFREQ_RELATION_H);
+
 			flag = true;
 		} else if (ts->ts_data.curr_data[0].y_position > (y + 100) || ts->ts_data.curr_data[0].y_position < (y - 100)) {
-			hotplug_boostpulse();
+			if (policy->cur < BOOST_FREQ)
+				__cpufreq_driver_target(policy, BOOST_FREQ, CPUFREQ_RELATION_H);
+
 			flag = true;
 		}
 	} else {
@@ -864,7 +873,7 @@ static void touch_work_func(struct work_struct *work)
 		y = 0;
 		flag = false;
 		xy_lock = false;
-	}*/
+	}
 out:
 	if (likely(ts->pdata->role->operation_mode == INTERRUPT_MODE)) {
 		next_work = atomic_read(&ts->next_work);
