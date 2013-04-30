@@ -7,30 +7,27 @@
 
 #include <linux/kernel.h>
 #include <linux/init.h>
-#include <linux/module.h>
 #include <linux/cpu.h>
 #include <linux/workqueue.h>
 #include <linux/sched.h>
 #include <linux/timer.h>
 #include <linux/earlysuspend.h>
-#include <mach/cpufreq.h>
 #include <linux/rq_stats.h>
 #include <linux/cpufreq.h>
+#include <linux/delay.h>
+
+#include <mach/cpufreq.h>
 
 /* threshold for comparing time diffs is 2 seconds */
 #define SEC_THRESHOLD 2000
 #define HISTORY_SIZE 10
-#define DEFAULT_FIRST_LEVEL 90
+#define DEFAULT_FIRST_LEVEL 80
 #define DEFAULT_SECOND_LEVEL 25
 #define DEFAULT_THIRD_LEVEL 50
 #define DEFAULT_SUSPEND_FREQ 702000
 
-/*
- * TODO probably populate the struct with more relevant data
- */
 struct cpu_stats
 {
-    /* variable to be accessed to filter spurious load spikes */
     unsigned long time_stamp;
     unsigned int online_cpus;
     unsigned int total_cpus;
@@ -41,9 +38,7 @@ struct cpu_stats
 };
 
 static struct cpu_stats stats;
-
 static struct workqueue_struct *wq;
-
 static struct delayed_work decide_hotplug;
 
 unsigned int load_history[HISTORY_SIZE] = {0};
@@ -67,17 +62,14 @@ static void first_level_work_check(unsigned long temp_diff, unsigned long now)
     if (stats.online_cpus == stats.total_cpus)
         return;
 
-    if ((now - stats.time_stamp) >= temp_diff)
+    if (stats.online_cpus == 2 || (now - stats.time_stamp) >= temp_diff)
     {
         for_each_possible_cpu(cpu)
         {
-            if (cpu)
+            if (cpu && !cpu_online(cpu))
             {
-                if (!cpu_online(cpu))
-                {
-                    cpu_up(cpu);
-                    pr_info("Hotplug: cpu%d is up - high load\n", cpu);
-                }
+                cpu_up(cpu);
+                pr_info("Hotplug: cpu%d is up - high load\n", cpu);
             }
         }
 
@@ -99,14 +91,11 @@ static void second_level_work_check(unsigned long temp_diff, unsigned long now)
     {   
         for_each_possible_cpu(cpu)
         {
-            if (cpu)
+            if (cpu && !cpu_online(cpu))
             {
-                if (!cpu_online(cpu))
-                {
-                    cpu_up(cpu);
-                    pr_info("Hotplug: cpu%d is up - medium load\n", cpu);
-                    break;
-                }
+                cpu_up(cpu);
+                pr_info("Hotplug: cpu%d is up - medium load\n", cpu);
+                break;
             }
         }
 
@@ -218,25 +207,15 @@ static void decide_hotplug_func(struct work_struct *work)
 }
 
 static void mako_hotplug_early_suspend(struct early_suspend *handler)
-{
-    unsigned int cpu = nr_cpu_ids;
-	 
+{	 
     /* cancel the hotplug work when the screen is off and flush the WQ */
     flush_workqueue(wq);
     cancel_delayed_work_sync(&decide_hotplug);
-    pr_info("Early Suspend stopping Hotplug work...");
+    pr_info("Early Suspend stopping Hotplug work...\n");
     
-    if (num_online_cpus() > 1)
-    {
-        for_each_online_cpu(cpu)
-        {
-            if (cpu)
-            {
-                cpu_down(cpu);
-                pr_info("Early Suspend Hotplug: cpu%d is down\n", cpu);
-            }
-        }
-	}
+    msleep(2000);
+
+    third_level_work_check(0, ktime_to_ms(ktime_get()));
     
     /* cap max frequency to 702MHz by default */
     msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, 
@@ -246,23 +225,9 @@ static void mako_hotplug_early_suspend(struct early_suspend *handler)
 }
 
 static void mako_hotplug_late_resume(struct early_suspend *handler)
-{  
-    unsigned int cpu = nr_cpu_ids;
-    
+{      
     /* online all cores when the screen goes online */
-    for_each_possible_cpu(cpu)
-    {
-        if (cpu)
-        {
-            if (!cpu_online(cpu))
-            {
-                cpu_up(cpu);
-                pr_info("Late Resume Hotplug: cpu%d is up\n", cpu);
-            }
-        }
-    }
-
-    stats.time_stamp = ktime_to_ms(ktime_get());
+    first_level_work_check(0, ktime_to_ms(ktime_get()));
 
     /* restore default 1,5GHz max frequency */
     msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, MSM_CPUFREQ_NO_LIMIT);
