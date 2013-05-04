@@ -20,10 +20,10 @@
 
 /* threshold for comparing time diffs is 2 seconds */
 #define SEC_THRESHOLD 2000
-#define HISTORY_SIZE 10
+#define HISTORY_SIZE 8
 #define DEFAULT_FIRST_LEVEL 80
-#define DEFAULT_SECOND_LEVEL 25
-#define DEFAULT_THIRD_LEVEL 50
+#define DEFAULT_SECOND_LEVEL 50
+#define DEFAULT_THIRD_LEVEL 25
 #define DEFAULT_SUSPEND_FREQ 702000
 
 struct cpu_stats
@@ -174,7 +174,7 @@ static void decide_hotplug_func(struct work_struct *work)
     pr_info("THIRD: %d\n", third_level);
     pr_info("COUNTER: %d\n", counter); 
     */
-    
+
     if (load >= first_level)
     {
         first_level_work_check(SEC_THRESHOLD, now);
@@ -183,7 +183,7 @@ static void decide_hotplug_func(struct work_struct *work)
     }
     
     /* load is medium-high so online only one core at a time */
-    else if (load >= second_level)
+    else if ((load >= third_level && stats.online_cpus < 2) || load >= second_level)
     {
         /* feed it 2 times the seconds threshold because when this is called
            there is a check inside that onlines cpu1 bypassing the time_diff
@@ -197,6 +197,17 @@ static void decide_hotplug_func(struct work_struct *work)
         return;
     }
     
+    /* if two cpus are online while the load is just above the low zone
+       then its most than likely that the user is interacting with the UI
+       so instead of onling/offlining cpu1 every now and then lets keep it
+       online until the user is not interacting anymore. This should save
+       some resources that are ineherent to the hotplugging routines */
+    else if (load >= DEFAULT_THIRD_LEVEL && stats.online_cpus == 2)
+    {
+        queue_delayed_work_on(0, wq, &decide_hotplug, msecs_to_jiffies(HZ));
+        return;    
+    }
+
     /* low load obliterate the cpus to death */
     else if (load <= third_level && stats.online_cpus > 1)
     {
