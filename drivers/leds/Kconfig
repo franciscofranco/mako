@@ -572,6 +572,14 @@ config LEDS_TRIGGER_SLEEP
 	help
 	  This turns LEDs on when the screen is off but the cpu still running.
 
+config LEDS_TRIGGER_THERMAL
+	tristate "LED thermal Trigger"
+	depends on LEDS_TRIGGERS
+	help
+	  This allows LEDs to be controls by thermal sensor.
+
+	  If unsure, say N.
+
 comment "iptables trigger is under Netfilter config (LED target)"
 	depends on LEDS_TRIGGERS
 
