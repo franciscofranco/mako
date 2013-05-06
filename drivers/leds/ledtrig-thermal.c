@@ -20,6 +20,7 @@
 #include <linux/workqueue.h>
 #include <linux/earlysuspend.h>
 #include <linux/leds.h>
+#include "leds.h"
 
 static void check_temp(struct work_struct *work);
 static DECLARE_DELAYED_WORK(check_temp_work, check_temp);
@@ -31,7 +32,7 @@ static void thermal_trig_activate(struct led_classdev *led_cdev)
 {
 	schedule_delayed_work(&check_temp_work, delay);
 	active = 1;
-	pr_debug("%s: activated\n", __func__);
+	pr_info("%s: activated\n", __func__);
 }
 
 static void thermal_trig_deactivate(struct led_classdev *led_cdev)
@@ -39,7 +40,8 @@ static void thermal_trig_deactivate(struct led_classdev *led_cdev)
 	cancel_delayed_work(&check_temp_work);
 	flush_scheduled_work();
 	active = 0;
-	pr_debug("%s: deactivated\n", __func__);
+	led_set_brightness(led_cdev, LED_OFF);
+	pr_info("%s: deactivated\n", __func__);
 }
 
 static struct led_trigger thermal_led_trigger = {
@@ -133,13 +135,16 @@ static struct early_suspend thermal_trig_suspend_data = {
 
 static int __init thermal_trig_init(void)
 {
+	int ret;
 	delay = 2 * HZ;
 	brightness = 0;
 	active = 0;
 
-	register_early_suspend(&thermal_trig_suspend_data);
+	ret = led_trigger_register(&thermal_led_trigger);
+	if (!ret)
+		register_early_suspend(&thermal_trig_suspend_data);
 
-	return led_trigger_register(&thermal_led_trigger);
+	return ret;
 }
 
 static void __exit thermal_trig_exit(void)
@@ -147,6 +152,7 @@ static void __exit thermal_trig_exit(void)
 	cancel_delayed_work(&check_temp_work);
 	flush_scheduled_work();
 
+	unregister_early_suspend(&thermal_trig_suspend_data);
 	led_trigger_unregister(&thermal_led_trigger);
 }
 
