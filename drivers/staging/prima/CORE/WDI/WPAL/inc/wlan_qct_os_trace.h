@@ -23,7 +23,7 @@
 #define __WLAN_QCT_OS_TRACE_H
 
 
-#ifdef WLAN_DEBUG
+#ifdef WAS_WLAN_DEBUG
 
 /**----------------------------------------------------------------------------
   
@@ -88,9 +88,9 @@ if ( ! ( _condition ) )                                   \
 
 #else //WLAN_DEBUG
 
-#define WPAL_TRACE
+#define WPAL_TRACE(x...)
 #define WPAL_DUMP
-#define WPAL_ASSERT
+#define WPAL_ASSERT(x...)
 
 #endif //WLAN_DEBUG
 
