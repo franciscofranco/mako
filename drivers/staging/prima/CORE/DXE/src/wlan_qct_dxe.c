@@ -577,7 +577,7 @@ void dxeRXHealthMonitor
       wpalReadRegister(testCHCtrlBlk->channelRegister.chDXEDesclRegAddr, &chDescReg);
       wpalReadRegister(testCHCtrlBlk->channelRegister.chDXELstDesclRegAddr, &chLDescReg);
 
-      wpalTrace(eWLAN_MODULE_DAL_DATA, eWLAN_PAL_TRACE_LEVEL_INFO,
+      WPAL_TRACE(eWLAN_MODULE_DAL_DATA, eWLAN_PAL_TRACE_LEVEL_INFO,
                 "%11s : CCR 0x%x, CSR 0x%x, CDR 0x%x, CLDR 0x%x, HCBO %d, HCBDP 0x%x, HCBDC 0x%x, TCBO %d,TCBDP 0x%x, TCBDC 0x%x",
                 channelType[chLoop],
                 chControlReg, chStatusReg, chDescReg, chLDescReg,
@@ -589,7 +589,7 @@ void dxeRXHealthMonitor
       if((chControlReg & WLANDXE_DESC_CTRL_VALID) && 
          (chLDescReg != testCHCtrlBlk->headCtrlBlk->linkedDescPhyAddr))
       {
-         wpalTrace(eWLAN_MODULE_DAL_DATA, eWLAN_PAL_TRACE_LEVEL_WARN,
+         WPAL_TRACE(eWLAN_MODULE_DAL_DATA, eWLAN_PAL_TRACE_LEVEL_WARN,
                    "%11s : CCR 0x%x, CSR 0x%x, CDR 0x%x, CLDR 0x%x, "
                    "HCBO %d, HCBDP 0x%x, HCBDC 0x%x, TCBO %d,TCBDP 0x%x, TCBDC 0x%x",
                    channelType[chLoop],
@@ -606,7 +606,7 @@ void dxeRXHealthMonitor
       else if(!(chControlReg & WLANDXE_DESC_CTRL_VALID) && 
                (chDescReg != testCHCtrlBlk->headCtrlBlk->linkedDescPhyAddr))
       {
-         wpalTrace(eWLAN_MODULE_DAL_DATA, eWLAN_PAL_TRACE_LEVEL_WARN,
+         WPAL_TRACE(eWLAN_MODULE_DAL_DATA, eWLAN_PAL_TRACE_LEVEL_WARN,
                    "%11s : CCR 0x%x, CSR 0x%x, CDR 0x%x, CLDR 0x%x, "
                    "HCBO %d, HCBDP 0x%x, HCBDC 0x%x, TCBO %d,TCBDP 0x%x, TCBDC 0x%x",
                    channelType[chLoop],
@@ -707,7 +707,7 @@ void dxeTXHealthMonitor
       wpalReadRegister(testCHCtrlBlk->channelRegister.chDXEDesclRegAddr, &chDescReg);
       wpalReadRegister(testCHCtrlBlk->channelRegister.chDXELstDesclRegAddr, &chLDescReg);
 
-      wpalTrace(eWLAN_MODULE_DAL_DATA, eWLAN_PAL_TRACE_LEVEL_INFO,
+      WPAL_TRACE(eWLAN_MODULE_DAL_DATA, eWLAN_PAL_TRACE_LEVEL_INFO,
                 "%11s : CCR 0x%x, CSR 0x%x, CDR 0x%x, CLDR 0x%x, HCBO %d, HCBDP 0x%x, HCBDC 0x%x, TCBO %d,TCBDP 0x%x, TCBDC 0x%x",
                 channelType[chLoop],
                 chControlReg, chStatusReg, chDescReg, chLDescReg,
@@ -719,7 +719,7 @@ void dxeTXHealthMonitor
       if((chControlReg & WLANDXE_DESC_CTRL_VALID) && 
          (chLDescReg != testCHCtrlBlk->tailCtrlBlk->linkedDescPhyAddr))
       {
-         wpalTrace(eWLAN_MODULE_DAL_DATA, eWLAN_PAL_TRACE_LEVEL_WARN,
+         WPAL_TRACE(eWLAN_MODULE_DAL_DATA, eWLAN_PAL_TRACE_LEVEL_WARN,
                    "%11s : CCR 0x%x, CSR 0x%x, CDR 0x%x, CLDR 0x%x, "
                    "HCBO %d, HCBDP 0x%x, HCBDC 0x%x, TCBO %d,TCBDP 0x%x, TCBDC 0x%x",
                    channelType[chLoop],
@@ -736,7 +736,7 @@ void dxeTXHealthMonitor
       else if(!(chControlReg & WLANDXE_DESC_CTRL_VALID) && 
                (chDescReg != testCHCtrlBlk->tailCtrlBlk->linkedDescPhyAddr))
       {
-         wpalTrace(eWLAN_MODULE_DAL_DATA, eWLAN_PAL_TRACE_LEVEL_WARN,
+         WPAL_TRACE(eWLAN_MODULE_DAL_DATA, eWLAN_PAL_TRACE_LEVEL_WARN,
                    "%11s : CCR 0x%x, CSR 0x%x, CDR 0x%x, CLDR 0x%x, "
                    "HCBO %d, HCBDP 0x%x, HCBDC 0x%x, TCBO %d,TCBDP 0x%x, TCBDC 0x%x",
                    channelType[chLoop],
