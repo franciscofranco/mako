@@ -276,7 +276,7 @@ static int cpufreq_stat_notifier_policy(struct notifier_block *nb,
 		return 0;
 	ret = cpufreq_stats_create_table(policy, table);
 	if (ret)
-		return ret;
+		pr_debug("%s: create table failed, ret=%d\n", __func__, ret);
 	return 0;
 }
 
