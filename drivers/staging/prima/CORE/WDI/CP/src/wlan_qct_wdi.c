@@ -730,6 +730,7 @@ WDI_SetPowerStateCb
  @see
  @return Result of the function call
 */
+/*
 static char *WDI_getReqMsgString(wpt_uint16 wdiReqMsgId)
 {
   switch (wdiReqMsgId)
@@ -815,7 +816,7 @@ static char *WDI_getReqMsgString(wpt_uint16 wdiReqMsgId)
         return "Unknown WDI MessageId";
   }
 }
-
+*/
 
 
 /**
@@ -826,6 +827,7 @@ static char *WDI_getReqMsgString(wpt_uint16 wdiReqMsgId)
  @see
  @return Result of the function call
 */
+/*
 static char *WDI_getRespMsgString(wpt_uint16 wdiRespMsgId)
 {
   switch (wdiRespMsgId)
@@ -910,7 +912,7 @@ static char *WDI_getRespMsgString(wpt_uint16 wdiRespMsgId)
         return "Unknown WDI MessageId";
   }
 }
-
+*/
 /**
  @brief WDI_getHALStatusMsgString prints the HAL status in string.
 
@@ -919,6 +921,7 @@ static char *WDI_getRespMsgString(wpt_uint16 wdiRespMsgId)
  @see
  @return Result of the function call
 */
+/*
 static char *WDI_getHALStatusMsgString(wpt_uint16 halStatusId)
 {
   switch (halStatusId)
@@ -960,7 +963,7 @@ static char *WDI_getHALStatusMsgString(wpt_uint16 halStatusId)
         return "Unknown HAL status";
   }
 }
-
+*/
 /*========================================================================
 
                              INITIALIZATION APIs
