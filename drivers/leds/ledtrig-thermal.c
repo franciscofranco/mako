@@ -20,6 +20,7 @@
 #include <linux/workqueue.h>
 #include <linux/earlysuspend.h>
 #include <linux/leds.h>
+#include <linux/msm_thermal.h>
 #include "leds.h"
 
 static void check_temp(struct work_struct *work);
@@ -27,6 +28,8 @@ static DECLARE_DELAYED_WORK(check_temp_work, check_temp);
 static unsigned delay;
 static int brightness;
 static int active;
+
+static struct msm_thermal_data msm_thermal_info;
 
 static void thermal_trig_activate(struct led_classdev *led_cdev)
 {
@@ -52,8 +55,8 @@ static struct led_trigger thermal_led_trigger = {
 
 static void check_temp(struct work_struct *work)
 {
-	const short high_temp = 62;
-	const short low_temp = 47;
+	const short high_temp = 90;
+	const short low_temp = get_threshold() - 5;
 	const short max_br = 255;
 	struct tsens_device tsens_dev;
 	unsigned long temp = 0;
@@ -61,7 +64,7 @@ static void check_temp(struct work_struct *work)
 	int br = 0;
 	int diff = 0;
 
-	tsens_dev.sensor_num = 7;
+	tsens_dev.sensor_num = msm_thermal_info.sensor_id;
 	ret = tsens_get_temp(&tsens_dev, &temp);
 	if (ret) {
 		pr_debug("%s: Unable to read TSENS sensor %d\n", __func__,

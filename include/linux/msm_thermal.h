@@ -22,6 +22,8 @@ struct msm_thermal_data {
 	uint32_t freq_step;
 };
 
+extern unsigned short get_threshold(void);
+
 #ifdef CONFIG_THERMAL_MONITOR
 extern int msm_thermal_init(struct msm_thermal_data *pdata);
 extern int msm_thermal_device_init(void);

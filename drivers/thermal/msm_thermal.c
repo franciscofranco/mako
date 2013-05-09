@@ -42,6 +42,11 @@ struct cpufreq_policy *policy = NULL;
 uint32_t max_freq;
 uint32_t freq_buffer;
 
+unsigned short get_threshold()
+{
+	return temp_threshold;
+}
+
 static void check_temp(struct work_struct *work)
 {
 	struct tsens_device tsens_dev;
