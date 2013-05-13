@@ -30,6 +30,7 @@
 #include <linux/time.h>
 #include <linux/version.h>
 #include <linux/cpufreq.h>
+#include <linux/hotplug.h>
 
 #include <asm/atomic.h>
 #include <linux/gpio.h>
@@ -794,7 +795,8 @@ static void touch_input_report(struct lge_touch_data *ts)
 	input_sync(ts->input_dev);
 }
 
-#define BOOST_FREQ 1026000
+#define TOUCH_BOOST_FREQ get_input_boost_freq()
+#define SWIPE_BOOST_FREQ 702000
 static struct cpufreq_policy *policy;
 
 /*
@@ -809,9 +811,8 @@ static void touch_work_func(struct work_struct *work)
 	int ret;
 	static unsigned int x = 0;
 	static unsigned int y = 0;
-	static bool flag = false;
 	static bool xy_lock = false;
-	policy = cpufreq_cpu_get(0);
+	unsigned long now = ktime_to_ms(ktime_get());
 
 	atomic_dec(&ts->next_work);
 	ts->ts_data.total_num = 0;
@@ -849,30 +850,43 @@ static void touch_work_func(struct work_struct *work)
 	}
 
 	touch_input_report(ts);
-	
-	if (ts->ts_data.curr_data[0].state == ABS_PRESS) {
-		if(!xy_lock) {
+
+	if (likely(ts->ts_data.curr_data[0].state == ABS_PRESS)) 
+	{
+		if (!xy_lock) 
+		{
 			x = ts->ts_data.curr_data[0].x_position;
 			y = ts->ts_data.curr_data[0].y_position;
 			xy_lock = true;
 		}
 			
-		if (ts->ts_data.curr_data[0].x_position > (x + 100) || ts->ts_data.curr_data[0].x_position < (x - 100)) {
-			if (policy->cur < BOOST_FREQ)
-				__cpufreq_driver_target(policy, BOOST_FREQ, CPUFREQ_RELATION_H);
+		if (ts->ts_data.curr_data[0].x_position > (x + 100) || 
+			ts->ts_data.curr_data[0].x_position < (x - 100) || 
+			ts->ts_data.curr_data[0].y_position > (y + 100) || 
+			ts->ts_data.curr_data[0].y_position < (y - 100)) 
+		{
+			if (policy->cur < SWIPE_BOOST_FREQ)
+				__cpufreq_driver_target(policy, SWIPE_BOOST_FREQ, 
+					CPUFREQ_RELATION_H);
 
-			flag = true;
-		} else if (ts->ts_data.curr_data[0].y_position > (y + 100) || ts->ts_data.curr_data[0].y_position < (y - 100)) {
-			if (policy->cur < BOOST_FREQ)
-				__cpufreq_driver_target(policy, BOOST_FREQ, CPUFREQ_RELATION_H);
-
-			flag = true;
+			is_touching(true, now);
 		}
-	} else {
-		x = 0;
-		y = 0;
-		flag = false;
-		xy_lock = false;
+
+		else if (policy->cur < TOUCH_BOOST_FREQ && num_online_cpus() < 2)
+		{
+			__cpufreq_driver_target(policy, TOUCH_BOOST_FREQ, 
+				CPUFREQ_RELATION_H);
+		}
+	} 
+
+	else 
+	{
+		if (x != 0)
+			x = 0;
+		if (y != 0)
+			y = 0;
+		if (xy_lock)
+			xy_lock = false;
 	}
 out:
 	if (likely(ts->pdata->role->operation_mode == INTERRUPT_MODE)) {
@@ -1842,6 +1856,8 @@ static int touch_probe(struct i2c_client *client,
 	struct lge_touch_data *ts;
 	int ret = 0;
 	int one_sec = 0;
+
+	policy = cpufreq_cpu_get(0);
 
 	if (unlikely(touch_debug_mask & DEBUG_TRACE))
 		TOUCH_DEBUG_MSG("\n");

@@ -9,18 +9,9 @@
 #include <linux/init.h>
 #include <linux/device.h>
 #include <linux/miscdevice.h>
+#include <linux/hotplug.h>
 
 #define MAKO_HOTPLUG_CONTROL_VERSION 2
-
-int get_first_level(void);
-int get_second_level(void);
-int get_third_level(void);
-int get_suspend_frequency(void);
-
-extern void update_first_level(unsigned int level);
-extern void update_second_level(unsigned int level);
-extern void update_third_level(unsigned int level);
-extern void update_suspend_frequency(unsigned int freq);
 
 /*
  * Sysfs get/set entries
@@ -83,6 +74,25 @@ static ssize_t third_level_store(struct device *dev, struct device_attribute *at
     return size;
 }
 
+static ssize_t fourth_level_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    return sprintf(buf, "%u\n", get_fourth_level());
+}
+
+static ssize_t fourth_level_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t size)
+{
+    unsigned int new_val;
+    
+    sscanf(buf, "%u", &new_val);
+    
+    if (new_val != get_fourth_level() && new_val >= 0 && new_val <= 100)
+    {
+        update_fourth_level(new_val);
+    }
+    
+    return size;
+}
+
 static ssize_t suspend_frequency_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
     return sprintf(buf, "%u\n", get_suspend_frequency());
@@ -102,6 +112,25 @@ static ssize_t suspend_frequency_store(struct device *dev, struct device_attribu
     return size;
 }
 
+static ssize_t cores_on_touch_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    return sprintf(buf, "%u\n", get_cores_on_touch());
+}
+
+static ssize_t cores_on_touch_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t size)
+{
+    unsigned int new_val;
+    
+    sscanf(buf, "%u", &new_val);
+    
+    if (new_val != get_cores_on_touch() && new_val >= 0 && new_val <= 4)
+    {
+        update_cores_on_touch(new_val);
+    }
+    
+    return size;
+}
+
 static ssize_t mako_hotplug_control_version(struct device *dev, struct device_attribute* attr, char *buf)
 {
     return sprintf(buf, "%d\n", MAKO_HOTPLUG_CONTROL_VERSION);
@@ -110,7 +139,9 @@ static ssize_t mako_hotplug_control_version(struct device *dev, struct device_at
 static DEVICE_ATTR(first_level, 0777, first_level_show, first_level_store);
 static DEVICE_ATTR(second_level, 0777, second_level_show, second_level_store);
 static DEVICE_ATTR(third_level, 0777, third_level_show, third_level_store);
+static DEVICE_ATTR(fourth_level, 0777, fourth_level_show, fourth_level_store);
 static DEVICE_ATTR(suspend_frequency, 0777, suspend_frequency_show, suspend_frequency_store);
+static DEVICE_ATTR(cores_on_touch, 0777, cores_on_touch_show, cores_on_touch_store);
 static DEVICE_ATTR(version, 0777 , mako_hotplug_control_version, NULL);
 
 static struct attribute *mako_hotplug_control_attributes[] =
@@ -118,7 +149,9 @@ static struct attribute *mako_hotplug_control_attributes[] =
 	&dev_attr_first_level.attr,
     &dev_attr_second_level.attr,
     &dev_attr_third_level.attr,
+    &dev_attr_fourth_level.attr,
     &dev_attr_suspend_frequency.attr,
+    &dev_attr_cores_on_touch.attr,
 	&dev_attr_version.attr,
 	NULL
 };
