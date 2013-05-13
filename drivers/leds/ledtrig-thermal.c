@@ -23,13 +23,19 @@
 #include <linux/msm_thermal.h>
 #include "leds.h"
 
+#define DEBUG 0
+
+#define MAX_BR 255
+#define MIN_BR 0
+#define HIGH_TEMP 90
+#define LOW_TEMP get_threshold()
+#define SAFETY_THRESHOLD 10
+
 static void check_temp(struct work_struct *work);
 static DECLARE_DELAYED_WORK(check_temp_work, check_temp);
 static unsigned delay;
 static int brightness;
 static int active;
-
-static struct msm_thermal_data msm_thermal_info;
 
 static void thermal_trig_activate(struct led_classdev *led_cdev)
 {
@@ -43,7 +49,7 @@ static void thermal_trig_deactivate(struct led_classdev *led_cdev)
 	cancel_delayed_work(&check_temp_work);
 	flush_scheduled_work();
 	active = 0;
-	led_set_brightness(led_cdev, LED_OFF);
+	led_set_brightness(led_cdev, MIN_BR);
 	pr_info("%s: deactivated\n", __func__);
 }
 
@@ -55,26 +61,22 @@ static struct led_trigger thermal_led_trigger = {
 
 static void check_temp(struct work_struct *work)
 {
-	const short high_temp = 90;
-	const short low_temp = get_threshold() - 5;
-	const short max_br = 255;
 	struct tsens_device tsens_dev;
 	unsigned long temp = 0;
 	int ret = 0;
 	int br = 0;
 	int diff = 0;
 
-	tsens_dev.sensor_num = msm_thermal_info.sensor_id;
+	tsens_dev.sensor_num = 7;
 	ret = tsens_get_temp(&tsens_dev, &temp);
-	if (ret) {
-		pr_debug("%s: Unable to read TSENS sensor %d\n", __func__,
-				tsens_dev.sensor_num);
+
+	if (ret)
 		goto reschedule;
-	}
 
 	/* A..B -> C..D		x' = (D-C)*(X-A)/(B-A) */
-	if (temp > low_temp)
-		br = (max_br * (temp - low_temp)) / (high_temp - low_temp);
+	if (temp > (LOW_TEMP - SAFETY_THRESHOLD))
+		br = (MAX_BR * (temp - (LOW_TEMP - SAFETY_THRESHOLD))) / 
+			(HIGH_TEMP - (LOW_TEMP - SAFETY_THRESHOLD));
 
 	diff = abs(br - brightness);
 	if (diff > 120)
@@ -88,13 +90,15 @@ static void check_temp(struct work_struct *work)
 	else
 		br > brightness ? ++brightness : --brightness;
 
-	if (brightness < 0)
-		brightness = 0;
-	else if (brightness > 255)
-		brightness = 255;
+	if (brightness < MIN_BR)
+		brightness = MIN_BR;
+	else if (brightness > MAX_BR)
+		brightness = MAX_BR;
 
-	pr_debug("%s: temp: %lu, br: %u, led_br: %u\n", __func__,
+#ifdef DEBUG
+	pr_info("%s: temp: %lu, br: %u, led_br: %u\n", __func__,
 					temp, br, brightness);
+#endif
 
 	led_trigger_event(&thermal_led_trigger, brightness);
 
@@ -111,7 +115,7 @@ static void thermal_trig_early_suspend(struct early_suspend *h)
 	flush_scheduled_work();
 
 	if (brightness)
-		led_trigger_event(&thermal_led_trigger, LED_OFF);
+		led_trigger_event(&thermal_led_trigger, MIN_BR);
 
 	pr_debug("%s: led_br: %u\n", __func__, brightness);
 
