@@ -213,7 +213,10 @@ static void decide_hotplug_func(struct work_struct *work)
     else if (is_touched)
     {   
         if (now >= touch_off_time + SEC_THRESHOLD)
+        {
+            scale_min_sample_time(40);
             is_touched = false;
+        }
 
         else if (stats.online_cpus < stats.cores_on_touch)
         {
