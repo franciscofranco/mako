@@ -34,6 +34,7 @@ static int skip_init;
 #ifdef CONFIG_GAMMA_CONTROL
 static DEFINE_MUTEX(color_lock);
 struct dsi_cmd_desc new_color_vals[33];
+bool is_applying;
 #endif
 
 int kcal_refresh_values(void);
@@ -141,6 +142,12 @@ static int mipi_lgit_lcd_off(struct platform_device *pdev)
 
 	pr_info("%s started\n", __func__);
 
+	/* lousy hack to prevent a dma kernel panic if the user
+	   turns off the screen while the gamma tables are changed
+	   set up by the user */
+	if (is_applying)
+		msleep(2000);
+
 	if (mipi_lgit_pdata->bl_pwm_disable)
 		mipi_lgit_pdata->bl_pwm_disable();
 
@@ -179,6 +186,10 @@ static int mipi_lgit_lcd_off(struct platform_device *pdev)
 	}
 
 	pr_info("%s finished\n", __func__);
+
+	if (is_applying)
+		is_applying = false;
+
 	return 0;
 }
 
@@ -240,6 +251,9 @@ void update_vals(int type, int array_pos, int val)
 	int ret = 0;
 	int i;
 
+	if (!is_applying)
+		is_applying = true;
+
 	switch(type) {
 		case RED:
 			new_color_vals[5].payload[array_pos] = val;
@@ -271,11 +285,8 @@ void update_vals(int type, int array_pos, int val)
 	}
 
 	pr_info("%s - Updating display GAMMA settings.\n", __FUNCTION__);
-	
-	mutex_lock(&color_lock);
 
-	//blocks the CPU so it doesn't end up in a race condition and panics the system
-	mdelay(20);
+	mutex_lock(&color_lock);
 	MIPI_OUTP(MIPI_DSI_BASE + 0x38, 0x10000000);
 	ret = mipi_dsi_cmds_tx(&lgit_tx_buf,
 			new_color_vals,
