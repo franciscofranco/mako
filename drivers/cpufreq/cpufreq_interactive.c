@@ -935,6 +935,11 @@ unsigned int get_input_boost_freq()
 	return input_boost_freq;
 }
 
+unsigned int get_min_sample_time()
+{
+	return min_sample_time;
+}
+
 static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		unsigned int event)
 {
