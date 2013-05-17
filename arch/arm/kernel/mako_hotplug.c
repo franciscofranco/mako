@@ -114,12 +114,6 @@ static void second_level_work_check(unsigned long now)
         }
     }
 
-    if (stats.online_cpus == 1)
-        scale_interactive_tunables(50, 99, 30, 20);
- 
-    else if (stats.online_cpus == 3) 
-        scale_interactive_tunables(0, 80, 10, 80);
-
     stats.time_stamp = now;
 }
 
@@ -141,7 +135,7 @@ static void third_level_work_check(unsigned int load, unsigned long now)
             }
         }
 
-        scale_interactive_tunables(15, 99, 25, 40);
+        scale_interactive_tunables(50, 99, 30, 20);
     }
 
     else if (load <= third_level)
@@ -155,6 +149,9 @@ static void third_level_work_check(unsigned int load, unsigned long now)
                 break;
             }
         }
+
+        if (stats.online_cpus < 3)
+            scale_interactive_tunables(50, 99, 30, 20);
     }
 
     stats.time_stamp = now;
@@ -214,7 +211,7 @@ static void decide_hotplug_func(struct work_struct *work)
     {   
         if (now >= touch_off_time + SEC_THRESHOLD)
         {
-            scale_min_sample_time(40);
+            scale_min_sample_time(20);
             is_touched = false;
         }
 
@@ -245,8 +242,8 @@ static void decide_hotplug_func(struct work_struct *work)
 static void mako_hotplug_early_suspend(struct early_suspend *handler)
 {	 
     /* cancel the hotplug work when the screen is off and flush the WQ */
-    flush_workqueue(wq);
     cancel_delayed_work_sync(&decide_hotplug);
+    flush_workqueue(wq);
     pr_info("Early Suspend stopping Hotplug work...\n");
     
     third_level_work_check(0, ktime_to_ms(ktime_get()));
@@ -260,15 +257,8 @@ static void mako_hotplug_early_suspend(struct early_suspend *handler)
 
 static void mako_hotplug_late_resume(struct early_suspend *handler)
 {    
-    int i;
-
     /* online all cores when the screen goes online */
     first_level_work_check(ktime_to_ms(ktime_get()));
-
-    /* feed the buffer with fake load so that it doesn't average from low
-       values and derp the UI interactivity after screening on */
-    for (i = 0; i < HISTORY_SIZE; i++)
-        load_history[i] = 100;
 
     /* restore max frequency */
     msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, MSM_CPUFREQ_NO_LIMIT);
