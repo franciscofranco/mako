@@ -112,6 +112,9 @@ static void second_level_work_check(unsigned long now)
         }
     }
 
+    if (num_online_cpus() == 3) 
+        scale_interactive_tunables(0, 80, 10, 80);
+
     stats.time_stamp = now;
 }
 
@@ -132,8 +135,6 @@ static void third_level_work_check(unsigned int load, unsigned long now)
                 pr_info("Hotplug: cpu%d is down - low load\n", cpu);
             }
         }
-
-        scale_interactive_tunables(50, 99, 30, 20);
     }
 
     else if (load <= third_level)
@@ -146,11 +147,11 @@ static void third_level_work_check(unsigned int load, unsigned long now)
                 pr_info("Hotplug: cpu%d is down - low load\n", cpu);
                 break;
             }
-        }
-
-        if (stats.online_cpus < 3)
-            scale_interactive_tunables(50, 99, 30, 20);
+        }        
     }
+
+    if (likely(num_online_cpus() < 3))
+        scale_interactive_tunables(15, 99, 30, 40);
 
     stats.time_stamp = now;
 }
@@ -211,8 +212,8 @@ static void decide_hotplug_func(struct work_struct *work)
         if (now >= touch_off_time + SEC_THRESHOLD)
         {
             /* only call scale function if dynamic_scaling is true */
-            if (get_dynamic_scaling())
-                scale_min_sample_time(20);
+            if (likely(get_dynamic_scaling()))
+                scale_min_sample_time(40);
             is_touched = false;
         }
 

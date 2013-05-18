@@ -121,13 +121,13 @@ static int boost_val;
 
 static int input_boost_freq;
 
-static bool io_is_busy;
+static bool io_is_busy = true;
 
 /* 
  * dynamic tunables scaling flag linked to the 
  * hotplug driver 
  */ 
-static bool dynamic_scaling;
+static bool dynamic_scaling = true;
 
 static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		unsigned int event);
@@ -878,20 +878,23 @@ static struct global_attr input_boost_freq_attr = __ATTR(input_boost_freq, 0644,
 static ssize_t show_io_is_busy(struct kobject *kobj,
       struct attribute *attr, char *buf)
 {
-  return sprintf(buf, "%u\n", io_is_busy);
+  	return sprintf(buf, "%u\n", io_is_busy);
 }
 
 static ssize_t store_io_is_busy(struct kobject *kobj,
       struct attribute *attr, const char *buf, size_t count)
 {
-  int ret;
-  unsigned int val;
+  	int ret;
+	unsigned long val;
 
-  ret = sscanf(buf, "%d", &val);
-  if (ret < 0)
-    return ret;
-  io_is_busy = val;
-  return count;
+	ret = kstrtoul(buf, 0, &val);
+
+	if (ret < 0)
+		return ret;
+
+  	io_is_busy = val;
+
+  	return count;
 }
 
 static struct global_attr io_is_busy_attr = __ATTR(io_is_busy, 0644,
@@ -901,20 +904,23 @@ static struct global_attr io_is_busy_attr = __ATTR(io_is_busy, 0644,
 static ssize_t show_dynamic_scaling(struct kobject *kobj,
       struct attribute *attr, char *buf)
 {
-  return sprintf(buf, "%u\n", dynamic_scaling);
+  	return sprintf(buf, "%u\n", dynamic_scaling);
 }
 
 static ssize_t store_dynamic_scaling(struct kobject *kobj,
       struct attribute *attr, const char *buf, size_t count)
 {
-  int ret;
-  unsigned int val;
+  	int ret;
+	unsigned long val;
 
-  ret = sscanf(buf, "%d", &val);
-  if (ret < 0)
-    return ret;
-  dynamic_scaling = val;
-  return count;
+	ret = kstrtoul(buf, 0, &val);
+	
+	if (ret < 0)
+		return ret;
+  	
+  	dynamic_scaling = val;
+  	
+  	return count;
 }
 
 static struct global_attr dynamic_scaling_attr = __ATTR(dynamic_scaling, 0644,
@@ -1019,12 +1025,6 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			hispeed_freq = policy->max;
 			input_boost_freq = hispeed_freq;
 		}
-
-		if (!io_is_busy)
-			io_is_busy = 1;
-
-		if (!dynamic_scaling)
-			dynamic_scaling = 1;
 
 		/*
 		 * Do not register the idle hook and create sysfs
