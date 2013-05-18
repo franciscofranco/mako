@@ -880,7 +880,8 @@ static void touch_work_func(struct work_struct *work)
 				CPUFREQ_RELATION_H);
 		}
 
-		if (get_min_sample_time() < BOOSTED_TIME_MS)
+		if (get_min_sample_time() < BOOSTED_TIME_MS && 
+			likely(get_dynamic_scaling()))
 				scale_min_sample_time(BOOSTED_TIME);
 	} 
 

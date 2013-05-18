@@ -84,14 +84,12 @@ static void first_level_work_check(unsigned long now)
 
     for_each_possible_cpu(cpu)
     {
-        if (cpu && !cpu_online(cpu))
+        if (cpu && likely(!cpu_online(cpu)))
         {
             cpu_up(cpu);
             pr_info("Hotplug: cpu%d is up - high load\n", cpu);
         }
     }
-
-    scale_interactive_tunables(0, 80, 10, 80);
 
     stats.time_stamp = now;
 }
@@ -106,7 +104,7 @@ static void second_level_work_check(unsigned long now)
 
     for_each_possible_cpu(cpu)
     {
-        if (cpu && !cpu_online(cpu))
+        if (cpu && likely(!cpu_online(cpu)))
         {
             cpu_up(cpu);
             pr_info("Hotplug: cpu%d is up - medium load\n", cpu);
@@ -201,6 +199,7 @@ static void decide_hotplug_func(struct work_struct *work)
 
     if (load >= first_level)
     {
+        scale_interactive_tunables(0, 80, 10, 80);
         first_level_work_check(now);
         queue_delayed_work_on(0, wq, &decide_hotplug, msecs_to_jiffies(HZ));
         return;
@@ -211,7 +210,9 @@ static void decide_hotplug_func(struct work_struct *work)
     {   
         if (now >= touch_off_time + SEC_THRESHOLD)
         {
-            scale_min_sample_time(20);
+            /* only call scale function if dynamic_scaling is true */
+            if (get_dynamic_scaling())
+                scale_min_sample_time(20);
             is_touched = false;
         }
 
