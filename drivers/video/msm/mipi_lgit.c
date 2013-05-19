@@ -31,6 +31,10 @@ static struct dsi_buf lgit_tx_buf;
 static struct dsi_buf lgit_rx_buf;
 static int skip_init;
 
+#ifdef CONFIG_GAMMA_CONTROL
+struct dsi_cmd_desc new_color_vals[33];
+#endif
+
 #define DSV_ONBST 57
 
 static int lgit_external_dsv_onoff(uint8_t on_off)
@@ -76,9 +80,15 @@ static int mipi_lgit_lcd_on(struct platform_device *pdev)
 		return -EINVAL;
 
 	MIPI_OUTP(MIPI_DSI_BASE + 0x38, 0x10000000);
+#ifdef CONFIG_GAMMA_CONTROL
 	ret = mipi_dsi_cmds_tx(&lgit_tx_buf,
-			mipi_lgit_pdata->power_on_set_1,
-			mipi_lgit_pdata->power_on_set_size_1);
+		new_color_vals,
+		mipi_lgit_pdata->power_on_set_size_1);
+#else
+	ret = mipi_dsi_cmds_tx(&lgit_tx_buf,
+		mipi_lgit_pdata->power_on_set_1,
+		mipi_lgit_pdata->power_on_set_size_1);
+#endif
 	MIPI_OUTP(MIPI_DSI_BASE + 0x38, 0x14000000);
 	if (ret < 0) {
 		pr_err("%s: failed to transmit power_on_set_1 cmds\n", __func__);
@@ -211,6 +221,53 @@ static void mipi_lgit_set_backlight_board(struct msm_fb_data_type *mfd)
 	mipi_lgit_pdata->backlight_level(level, 0, 0);
 }
 
+#ifdef CONFIG_GAMMA_CONTROL
+
+#define RED 1
+#define GREEN 2
+#define BLUE 3
+#define CONTRAST 5
+#define BRIGHTNESS 6
+#define SATURATION 7
+
+void update_vals(int type, int array_pos, int val)
+{
+	int i;
+
+	switch(type) {
+		case RED:
+			new_color_vals[5].payload[array_pos] = val;
+			new_color_vals[6].payload[array_pos] = val;
+			break;
+		case GREEN:
+			new_color_vals[7].payload[array_pos] = val;
+			new_color_vals[8].payload[array_pos] = val;
+			break;
+		case BLUE:
+			new_color_vals[9].payload[array_pos] = val;
+			new_color_vals[10].payload[array_pos] = val;
+			break;
+		case CONTRAST:
+			for (i = 5; i <= 10; i++)
+				new_color_vals[i].payload[type] = val;
+			break;
+		case BRIGHTNESS:
+			for (i = 5; i <= 10; i++)
+				new_color_vals[i].payload[type] = val;
+			break;
+		case SATURATION:
+			for (i = 5; i <= 10; i++)
+				new_color_vals[i].payload[type] = val;
+			break;
+		default:
+			pr_info("%s - Wrong value - abort.\n", __FUNCTION__);
+			return;
+	}
+
+	pr_info("%s - Updating display GAMMA settings.\n", __FUNCTION__);
+}
+#endif
+
 struct syscore_ops panel_syscore_ops = {
 	.shutdown = mipi_lgit_lcd_shutdown,
 };
@@ -221,6 +278,10 @@ static int mipi_lgit_lcd_probe(struct platform_device *pdev)
 		mipi_lgit_pdata = pdev->dev.platform_data;
 		return 0;
 	}
+
+#ifdef CONFIG_GAMMA_CONTROL
+	memcpy((void *) new_color_vals, (void *) mipi_lgit_pdata->power_on_set_1, sizeof(new_color_vals));
+#endif
 
 	pr_info("%s start\n", __func__);
 
