@@ -416,27 +416,27 @@ static ssize_t gammacontrol_version(struct device * dev, struct device_attribute
     return sprintf(buf, "%u\n", GAMMACONTROL_VERSION);
 }
 
-static DEVICE_ATTR(red_whites, 0664, red_whites_show, red_whites_store);
-static DEVICE_ATTR(green_whites, 0664, green_whites_show, green_whites_store);
-static DEVICE_ATTR(blue_whites, 0664, blue_whites_show, blue_whites_store);
+static DEVICE_ATTR(red_whites, 0777, red_whites_show, red_whites_store);
+static DEVICE_ATTR(green_whites, 0777, green_whites_show, green_whites_store);
+static DEVICE_ATTR(blue_whites, 0777, blue_whites_show, blue_whites_store);
 
-static DEVICE_ATTR(red_greys, 0664, red_greys_show, red_greys_store);
-static DEVICE_ATTR(green_greys, 0664, green_greys_show, green_greys_store);
-static DEVICE_ATTR(blue_greys, 0664, blue_greys_show, blue_greys_store);
+static DEVICE_ATTR(red_greys, 0777, red_greys_show, red_greys_store);
+static DEVICE_ATTR(green_greys, 0777, green_greys_show, green_greys_store);
+static DEVICE_ATTR(blue_greys, 0777, blue_greys_show, blue_greys_store);
 
-static DEVICE_ATTR(red_mids, 0664, red_mids_show, red_mids_store);
-static DEVICE_ATTR(green_mids, 0664, green_mids_show, green_mids_store);
-static DEVICE_ATTR(blue_mids, 0664, blue_mids_show, blue_mids_store);
+static DEVICE_ATTR(red_mids, 0777, red_mids_show, red_mids_store);
+static DEVICE_ATTR(green_mids, 0777, green_mids_show, green_mids_store);
+static DEVICE_ATTR(blue_mids, 0777, blue_mids_show, blue_mids_store);
 
-static DEVICE_ATTR(red_blacks, 0664, red_blacks_show, red_blacks_store);
-static DEVICE_ATTR(green_blacks, 0664, green_blacks_show, green_blacks_store);
-static DEVICE_ATTR(blue_blacks, 0664, blue_blacks_show, blue_blacks_store);
+static DEVICE_ATTR(red_blacks, 0777, red_blacks_show, red_blacks_store);
+static DEVICE_ATTR(green_blacks, 0777, green_blacks_show, green_blacks_store);
+static DEVICE_ATTR(blue_blacks, 0777, blue_blacks_show, blue_blacks_store);
 
-static DEVICE_ATTR(contrast, 0664, contrast_show, contrast_store);
-static DEVICE_ATTR(brightness, 0664, brightness_show, brightness_store);
-static DEVICE_ATTR(saturation, 0664, saturation_show, saturation_store);
+static DEVICE_ATTR(contrast, 0777, contrast_show, contrast_store);
+static DEVICE_ATTR(brightness, 0777, brightness_show, brightness_store);
+static DEVICE_ATTR(saturation, 0777, saturation_show, saturation_store);
 
-static DEVICE_ATTR(version, 0664 , gammacontrol_version, NULL);
+static DEVICE_ATTR(version, 0777 , gammacontrol_version, NULL);
 
 static struct attribute *gammacontrol_attributes[] = 
 {
