@@ -350,6 +350,8 @@ void mipi_dsi_cmd_mdp_busy(void);
 void mipi_dsi_configure_fb_divider(u32 fps_level);
 void mipi_dsi_wait4video_done(void);
 
+extern int kcal_refresh_values(void);
+
 #ifdef CONFIG_FB_MSM_MDP303
 void update_lane_config(struct msm_panel_info *pinfo);
 #endif
