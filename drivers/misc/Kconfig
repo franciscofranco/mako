@@ -10,6 +10,13 @@ config SOUND_CONTROL
 	help
 	  This adds support for tweaking the Sound Card driver
 	  parameters. Currently only Headphones volume boost.
+
+config GAMMA_CONTROL
+	tristate "Mako Gamma Control"
+	default y
+	help
+	  This adds full support for Gamma screen tweaking on
+	  Mako.
 	  
 config SENSORS_LIS3LV02D
 	tristate
