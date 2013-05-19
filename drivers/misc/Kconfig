@@ -4,6 +4,13 @@
 
 menu "Misc devices"
 
+config SOUND_CONTROL
+	tristate "Mako Sound Control"
+	default y
+	help
+	  This adds support for tweaking the Sound Card driver
+	  parameters. Currently only Headphones volume boost.
+	  
 config SENSORS_LIS3LV02D
 	tristate
 	depends on INPUT

@@ -1057,7 +1057,7 @@ static const struct soc_enum cf_rxmix6_enum =
 static const struct soc_enum cf_rxmix7_enum =
 	SOC_ENUM_SINGLE(TABLA_A_CDC_RX7_B4_CTL, 1, 3, cf_text);
 
-static const struct snd_kcontrol_new tabla_snd_controls[] = {
+static struct snd_kcontrol_new tabla_snd_controls[] = {
 
 	SOC_ENUM_EXT("EAR PA Gain", tabla_ear_pa_gain_enum[0],
 		tabla_pa_gain_get, tabla_pa_gain_put),
@@ -2818,7 +2818,6 @@ static int tabla_codec_enable_dec(struct snd_soc_dapm_widget *w,
 				  snd_soc_read(codec,
 				  tx_digital_gain_reg[w->shift + offset])
 				  );
-
 		break;
 
 	case SND_SOC_DAPM_PRE_PMD:
@@ -8360,6 +8359,50 @@ static const struct file_operations codec_mbhc_debug_ops = {
 	.read = codec_mbhc_debug_read,
 };
 #endif
+
+#ifdef CONFIG_SOUND_CONTROL
+
+#define HEADSET_MAX_DEFAULT 12
+#define HEADSET_MIN_DEFAULT 0
+#define HEADPHONES_MAX_DEFAULT 40
+#define HEADPHONES_MIN_DEFAULT -84
+
+struct snd_kcontrol_new *kcontrol = (struct snd_kcontrol_new *) tabla_snd_controls;
+struct soc_mixer_control *left_mixer, *right_mixer, *left_headset_mixer, *right_headset_mixer;
+
+void update_headphones_volume_boost(int vol_boost)
+{
+	left_mixer = (struct soc_mixer_control *) kcontrol[8].private_value;
+	right_mixer = (struct soc_mixer_control *) kcontrol[9].private_value;
+
+	left_mixer->platform_max = HEADPHONES_MAX_DEFAULT + vol_boost;
+	left_mixer->max = HEADPHONES_MAX_DEFAULT + vol_boost;
+	left_mixer->min = HEADPHONES_MIN_DEFAULT + vol_boost;
+	pr_info("Left headphone max: %d - Left headphone min: %d\n", left_mixer->max, left_mixer->min);
+
+	right_mixer->platform_max = HEADPHONES_MAX_DEFAULT + vol_boost;
+	right_mixer->max = HEADPHONES_MAX_DEFAULT  + vol_boost;
+	right_mixer->min = HEADPHONES_MIN_DEFAULT + vol_boost;
+	pr_info("Right headphone max: %d - Right headphone min: %d\n", right_mixer->max, right_mixer->min);
+}
+
+void update_headset_volume_boost(int vol_boost)
+{
+	left_headset_mixer = (struct soc_mixer_control *) kcontrol[6].private_value;
+	right_headset_mixer = (struct soc_mixer_control *) kcontrol[7].private_value;
+
+	right_headset_mixer->platform_max = HEADSET_MAX_DEFAULT + vol_boost;
+	right_headset_mixer->max = HEADSET_MAX_DEFAULT + vol_boost;
+	right_headset_mixer->min = HEADSET_MIN_DEFAULT + vol_boost;
+	pr_info("Right headset max: %d - Right headset min: %d\n", right_headset_mixer->max, right_headset_mixer->min);
+
+	left_headset_mixer->platform_max = HEADSET_MAX_DEFAULT + vol_boost;
+	left_headset_mixer->max = HEADSET_MAX_DEFAULT + vol_boost;
+	left_headset_mixer->min = HEADSET_MIN_DEFAULT + vol_boost;
+	pr_info("Left headset max: %d - Left headset min: %d\n", left_headset_mixer->max, left_headset_mixer->min);
+}
+#endif
+
 
 static int tabla_codec_probe(struct snd_soc_codec *codec)
 {
