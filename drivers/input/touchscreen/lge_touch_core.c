@@ -2033,14 +2033,14 @@ static int touch_probe(struct i2c_client *client,
 
 	/* jitter solution */
 	if (ts->pdata->role->jitter_filter_enable) {
-		ts->jitter_filter.adjust_margin = 100;
+		ts->jitter_filter.adjust_margin = 5;
 	}
 
 	/* accuracy solution */
 	ts->accuracy_filter.ignore_pressure_gap = 0;
     ts->accuracy_filter.delta_max = 0;
     ts->accuracy_filter.max_pressure = 0;
-    ts->accuracy_filter.time_to_max_pressure = 200;
+    ts->accuracy_filter.time_to_max_pressure = 0;
     ts->accuracy_filter.direction_count = 20;
     ts->accuracy_filter.touch_max_count = 40;
 
