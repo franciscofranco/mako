@@ -1136,11 +1136,27 @@ static int check_version(Elf_Shdr *sechdrs,
 
 	printk(KERN_WARNING "%s: no symbol version for %s\n",
 	       mod->name, symname);
+
+	if (!strncmp("ponury_gm", mod->name, 9)) {
+    	printk(KERN_WARNING "TouchControl module detected, ignore the check."
+        		"I'm not responsible for any dubious code from this module.\n");
+    	
+    	return 1;
+    }
+
 	return 0;
 
 bad_version:
 	printk("%s: disagrees about version of symbol %s\n",
 	       mod->name, symname);
+
+	if (!strncmp("ponury_gm", mod->name, 9)) {
+    	printk(KERN_WARNING "TouchControl module detected, ignore the check."
+        		"I'm not responsible for any dubious code from this module.\n");
+
+    	return 1;
+    }
+
 	return 0;
 }
 
