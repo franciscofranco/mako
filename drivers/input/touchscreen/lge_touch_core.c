@@ -31,6 +31,9 @@
 #include <linux/version.h>
 #include <linux/atomic.h>
 #include <linux/gpio.h>
+#include <linux/cpufreq.h>
+#include <linux/hotplug.h>
+#include <linux/cpu.h>
 
 #include <linux/input/lge_touch_core.h>
 
@@ -47,6 +50,10 @@ struct lge_touch_attribute {
 static int is_pressure;
 static int is_width_major;
 static int is_width_minor;
+
+/* extern vars */
+bool is_touching;
+u64 freq_boosted_time;
 
 #define LGE_TOUCH_ATTR(_name, _mode, _show, _store)               \
 	struct lge_touch_attribute lge_touch_attr_##_name =       \
@@ -803,6 +810,9 @@ static void touch_work_func(struct work_struct *work)
 	int next_work = 0;
 	int ret;
 
+    is_touching = true;
+	freq_boosted_time = ktime_to_ms(ktime_get());
+    
 	atomic_dec(&ts->next_work);
 	ts->ts_data.total_num = 0;
 
