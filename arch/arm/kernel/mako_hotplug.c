@@ -55,7 +55,7 @@ static void scale_interactive_tunables(unsigned int above_hispeed_delay,
     scale_min_sample_time(min_sample_time);
 }
 
-static void decide_hotplug_func(struct work_struct *work)
+static void __cpuinit decide_hotplug_func(struct work_struct *work)
 {
     int cpu;
     int cpu_boost;
@@ -130,7 +130,7 @@ static void decide_hotplug_func(struct work_struct *work)
     queue_delayed_work(wq, &decide_hotplug, msecs_to_jiffies(TIMER));
 }
 
-static void mako_hotplug_early_suspend(struct early_suspend *handler)
+static void __cpuinit mako_hotplug_early_suspend(struct early_suspend *handler)
 {	 
     int cpu;
 
@@ -156,7 +156,7 @@ static void mako_hotplug_early_suspend(struct early_suspend *handler)
             0, stats.suspend_frequency/1000);
 }
 
-static void mako_hotplug_late_resume(struct early_suspend *handler)
+static void __cpuinit mako_hotplug_late_resume(struct early_suspend *handler)
 {  
     int cpu;
 
