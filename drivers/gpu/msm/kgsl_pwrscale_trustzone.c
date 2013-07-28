@@ -9,6 +9,9 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
+ * Modified by Paul Reioux (Faux123)
+ * 2013-06-20: Added KGSL Simple GPU Governor
+ *
  */
 
 #include <linux/export.h>
