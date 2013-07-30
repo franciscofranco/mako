@@ -68,7 +68,7 @@ static spinlock_t down_cpumask_lock;
 static struct mutex set_speed_lock;
 
 /* Hi speed to bump to from lo speed when load burst (default max) */
-#define DEFAULT_HISPEED_FREQ 702000
+#define DEFAULT_HISPEED_FREQ 1026000
 static u64 hispeed_freq;
 
 #define DEFAULT_UP_THRESHOLD 85
@@ -97,7 +97,7 @@ static unsigned long above_hispeed_delay_val;
  * The CPU will be boosted to this frequency when the screen is
  * touched. input_boost needs to be enabled.
  */
-#define DEFAULT_INPUT_BOOST_FREQ 1188000
+#define DEFAULT_INPUT_BOOST_FREQ 1134000
 static int input_boost_freq;
 
 /*
