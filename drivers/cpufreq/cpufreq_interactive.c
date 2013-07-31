@@ -71,6 +71,8 @@ static struct mutex set_speed_lock;
 #define DEFAULT_HISPEED_FREQ 1026000
 static u64 hispeed_freq;
 
+#define HISPEED_FREQ_LOAD 50
+
 #define DEFAULT_UP_THRESHOLD 85
 static unsigned long up_threshold;
 
@@ -240,6 +242,9 @@ static void cpufreq_interactive_timer(unsigned long data)
     
 	if (cpu_load > up_threshold)
 		new_freq = pcpu->policy->max;
+    /* if the cpu load is at 50% lets bump the cpu to hispeed_freq */
+    else if (cpu_load >= HISPEED_FREQ_LOAD)
+        new_freq = hispeed_freq;
 	else
 		new_freq = pcpu->policy->max * cpu_load / 100;
     
