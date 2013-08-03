@@ -47,9 +47,7 @@ spinlock_t tz_lock;
  * frame length, but less than the idle timer.
  */
 #define CEILING			50000
-#define SWITCH_OFF		200
-#define SWITCH_OFF_RESET_TH	40
-#define SKIP_COUNTER		500
+
 #define TZ_RESET_ID		0x3
 #define TZ_UPDATE_ID		0x4
 
@@ -82,7 +80,7 @@ static ssize_t tz_governor_show(struct kgsl_device *device,
 
 	if (priv->governor == TZ_GOVERNOR_ONDEMAND)
 		ret = snprintf(buf, 10, "ondemand\n");
-    else if (priv->governor == TZ_GOVERNOR_SIMPLE)
+    	else if (priv->governor == TZ_GOVERNOR_SIMPLE)
 		ret = snprintf(buf, 8, "simple\n");
 	else
 		ret = snprintf(buf, 13, "performance\n");
@@ -107,7 +105,7 @@ static ssize_t tz_governor_store(struct kgsl_device *device,
 
 	if (!strncmp(str, "ondemand", 8))
 		priv->governor = TZ_GOVERNOR_ONDEMAND;
-    else if (!strncmp(str, "simple", 6))
+    	else if (!strncmp(str, "simple", 6))
 		priv->governor = TZ_GOVERNOR_SIMPLE;
 	else if (!strncmp(str, "performance", 11))
 		priv->governor = TZ_GOVERNOR_PERFORMANCE;
@@ -141,7 +139,7 @@ static void tz_wake(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 
 #define HISTORY_SIZE 10
 
-static int ramp_up_threshold = 6500;
+static int ramp_up_threshold = 7000;
 module_param_named(simple_ramp_threshold, ramp_up_threshold, int, 0664);
 
 static unsigned int history[HISTORY_SIZE] = {0};
@@ -204,22 +202,6 @@ static void tz_idle(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 	if ((stats.total_time == 0) ||
 		(priv->bin.total_time < FLOOR))
 		return;
-
-	/* If the GPU has stayed in turbo mode for a while, *
-	 * stop writing out values. */
-	if (pwr->active_pwrlevel == 0) {
-		if (priv->no_switch_cnt > SWITCH_OFF) {
-			priv->skip_cnt++;
-			if (priv->skip_cnt > SKIP_COUNTER) {
-				priv->no_switch_cnt -= SWITCH_OFF_RESET_TH;
-				priv->skip_cnt = 0;
-			}
-			return;
-		}
-		priv->no_switch_cnt++;
-	} else {
-		priv->no_switch_cnt = 0;
-	}
 
 	/* If there is an extended block of busy processing,
 	 * increase frequency.  Otherwise run the normal algorithm.
