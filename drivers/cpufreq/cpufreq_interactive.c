@@ -71,8 +71,10 @@ static struct mutex set_speed_lock;
 #define DEFAULT_HISPEED_FREQ 1026000
 static u64 hispeed_freq;
 
+/* Bump the CPU to hispeed_freq if its load is >= 50% */
 #define HISPEED_FREQ_LOAD 50
 
+/* If the CPU load is >= 85% it goes to max frequency */
 #define DEFAULT_UP_THRESHOLD 85
 static unsigned long up_threshold;
 
@@ -99,7 +101,7 @@ static unsigned long above_hispeed_delay_val;
  * The CPU will be boosted to this frequency when the screen is
  * touched. input_boost needs to be enabled.
  */
-#define DEFAULT_INPUT_BOOST_FREQ 1134000
+#define DEFAULT_INPUT_BOOST_FREQ 1512000
 static int input_boost_freq;
 
 /*
@@ -240,13 +242,14 @@ static void cpufreq_interactive_timer(unsigned long data)
 	if (load_since_change > cpu_load)
 		cpu_load = load_since_change;
     
-	if (cpu_load > up_threshold)
+	if (cpu_load >= up_threshold)
 		new_freq = pcpu->policy->max;
-    /* if the cpu load is at 50% lets bump the cpu to hispeed_freq */
-    else if (cpu_load >= HISPEED_FREQ_LOAD)
-        new_freq = hispeed_freq;
+    	/* if the cpu load is >= 50% lets bump the cpu to hispeed_freq */
+    	else if (cpu_load >= HISPEED_FREQ_LOAD)
+        	new_freq = hispeed_freq;
+	/* Lets divide by up_threshold so that the device uses more freqs */
 	else
-		new_freq = pcpu->policy->max * cpu_load / 100;
+		new_freq = pcpu->policy->max * cpu_load / up_threshold;
     
 	if (new_freq <= hispeed_freq)
 		pcpu->hispeed_validate_time = pcpu->timer_run_time;
@@ -261,14 +264,15 @@ static void cpufreq_interactive_timer(unsigned long data)
     
 	new_freq = pcpu->freq_table[index].frequency;
     
-	/* we want cpu0 to be the only core blocked for freq changes while
-     we are touching the screen for UI interaction */
+	/* 
+	 * we want cpu0 to be the only core blocked for freq changes while
+     	 * we are touching the screen for UI interaction 
+	 */
 	if (is_touching && pcpu->policy->cpu < 2)
 	{
 		if (ktime_to_ms(ktime_get()) - freq_boosted_time >= 1000)
 			is_touching = false;
-        
-		if (new_freq < input_boost_freq || pcpu->policy->cur < input_boost_freq)
+		else if (new_freq < input_boost_freq || pcpu->policy->cur < input_boost_freq)
 			new_freq = input_boost_freq;
 	}
     
