@@ -34,7 +34,6 @@
 
 struct cpu_stats
 {
-    unsigned int total_cpus;
     unsigned int default_first_level;
     unsigned int suspend_frequency;
     unsigned int cores_on_touch;
@@ -60,15 +59,18 @@ static void __cpuinit decide_hotplug_func(struct work_struct *work)
     int cpu;
     int cpu_boost;
 
-    if (unlikely(is_touching && num_online_cpus() < stats.cores_on_touch))
+    if (is_touching)
     {
-        for_each_possible_cpu(cpu_boost)
-        {
-            if (!cpu_online(cpu_boost) && cpu_boost < stats.cores_on_touch) 
-            {
-                cpu_up(cpu_boost);
-            }
-        }
+		if (num_online_cpus() < stats.cores_on_touch)
+		{
+        	for_each_possible_cpu(cpu_boost)
+        	{
+            	if (!cpu_online(cpu_boost) && cpu_boost < stats.cores_on_touch) 
+            	{
+            	    cpu_up(cpu_boost);
+            	}
+        	}
+		}
     }
 
     for_each_online_cpu(cpu) 
@@ -224,7 +226,6 @@ int __init mako_hotplug_init(void)
 	pr_info("Mako Hotplug driver started.\n");
     
     /* init everything here */
-    stats.total_cpus = num_present_cpus();
     stats.default_first_level = DEFAULT_FIRST_LEVEL;
     stats.suspend_frequency = DEFAULT_SUSPEND_FREQ;
     stats.cores_on_touch = DEFAULT_CORES_ON_TOUCH;
