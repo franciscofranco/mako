@@ -242,14 +242,14 @@ static void cpufreq_interactive_timer(unsigned long data)
 	if (load_since_change > cpu_load)
 		cpu_load = load_since_change;
     
+	/* Lets divide by up_threshold so that the device uses more freqs */
+	new_freq = pcpu->policy->max * cpu_load / up_threshold;
+
 	if (cpu_load >= up_threshold)
 		new_freq = pcpu->policy->max;
-    	/* if the cpu load is >= 50% lets bump the cpu to hispeed_freq */
-    	else if (cpu_load >= HISPEED_FREQ_LOAD)
-        	new_freq = hispeed_freq;
-	/* Lets divide by up_threshold so that the device uses more freqs */
-	else
-		new_freq = pcpu->policy->max * cpu_load / up_threshold;
+	/* if the cpu load is >= 50% lets bump the cpu to hispeed_freq */
+	else if (cpu_load >= HISPEED_FREQ_LOAD && new_freq < hispeed_freq)
+		new_freq = hispeed_freq;
     
 	if (new_freq <= hispeed_freq)
 		pcpu->hispeed_validate_time = pcpu->timer_run_time;
@@ -272,7 +272,8 @@ static void cpufreq_interactive_timer(unsigned long data)
 	{
 		if (ktime_to_ms(ktime_get()) - freq_boosted_time >= 1000)
 			is_touching = false;
-		else if (new_freq < input_boost_freq || pcpu->policy->cur < input_boost_freq)
+		else if (new_freq < input_boost_freq || 
+					pcpu->policy->cur < input_boost_freq)
 			new_freq = input_boost_freq;
 	}
     
@@ -751,9 +752,6 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
     
 	switch (event) {
         case CPUFREQ_GOV_START:
-            if (!cpu_online(policy->cpu))
-                return -EINVAL;
-            
             freq_table =
 			cpufreq_frequency_get_table(policy->cpu);
             
