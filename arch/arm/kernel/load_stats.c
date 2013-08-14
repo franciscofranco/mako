@@ -47,6 +47,8 @@ struct cpu_load_data {
 	struct mutex cpu_load_mutex;
 };
 
+unsigned int get_cur_max(unsigned int cpu);
+
 static DEFINE_PER_CPU(struct cpu_load_data, cpuload);
 
 static inline u64 get_cpu_idle_time_jiffy(unsigned int cpu, u64 *wall)
@@ -93,20 +95,24 @@ static inline cputime64_t get_cpu_iowait_time(unsigned int cpu, cputime64_t *wal
 	return iowait_time;
 }
 
-static int update_average_load(unsigned int freq, unsigned int cpu)
+static int update_average_load(unsigned int cpu)
 {
 	struct cpufreq_policy cpu_policy;
 	struct cpu_load_data *pcpu = &per_cpu(cpuload, cpu);
 	cputime64_t cur_wall_time, cur_idle_time, cur_iowait_time;
 	unsigned int idle_time, wall_time, iowait_time;
 	unsigned int cur_load, load_at_max_freq;
+	unsigned int cur_max;
 
+	cur_max = get_cur_max(cpu);
 	cpufreq_get_policy(&cpu_policy, cpu);
 
-	/* if max freq is changed by the user this load calculator
-	   needs to adjust itself otherwise its going to be all wrong */
-	if (unlikely(pcpu->policy_max != cpu_policy.max))
-		pcpu->policy_max = cpu_policy.max;
+	/* 
+	 * if max freq is changed by the user this load calculator
+	 * needs to adjust itself otherwise its going to be all wrong
+	 * This will also calculate correctly if the device is thermal throttled
+     */
+	pcpu->policy_max = cur_max >= cpu_policy.max ? cpu_policy.max : cur_max;
 
 	cur_idle_time = get_cpu_idle_time(cpu, &cur_wall_time);
 	cur_iowait_time = get_cpu_iowait_time(cpu, &cur_wall_time);
@@ -129,7 +135,7 @@ static int update_average_load(unsigned int freq, unsigned int cpu)
 	cur_load = 100 * (wall_time - idle_time) / wall_time;
 
 	/* Calculate the scaled load across CPU */
-	load_at_max_freq = (cur_load * freq) / pcpu->policy_max;
+	load_at_max_freq = (cur_load * cpu_policy.cur) / pcpu->policy_max;
 
 	/* This is the first sample in this window*/
 	pcpu->avg_load_maxfreq = pcpu->prev_avg_load_maxfreq + load_at_max_freq;
@@ -144,7 +150,7 @@ unsigned int report_load_at_max_freq(int cpu)
 	struct cpu_load_data *pcpu;
 	unsigned int total_load = 0;
 	pcpu = &per_cpu(cpuload, cpu);
-	update_average_load(acpuclk_get_rate(cpu), cpu);
+	update_average_load(cpu);
 	total_load = pcpu->avg_load_maxfreq;
 	pcpu->prev_avg_load_maxfreq = pcpu->avg_load_maxfreq;
 	pcpu->avg_load_maxfreq = 0;
