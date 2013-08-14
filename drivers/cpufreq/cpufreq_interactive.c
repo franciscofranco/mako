@@ -116,6 +116,13 @@ static int input_boost_freq_duration;
  */
 static bool dynamic_scaling = true;
 
+/*
+ * Helper to get the maximum set frequency which takes into consideration if the
+ * device is being thermal throttled or not to ensure that the loads are
+ * properly calculated
+ */
+unsigned int get_cur_max(unsigned int cpu);
+
 static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
                                         unsigned int event);
 
@@ -189,6 +196,8 @@ static void cpufreq_interactive_timer(unsigned long data)
 	unsigned int new_freq;
 	unsigned int index;
 	unsigned long flags;
+	unsigned int cur_max;
+	unsigned int max_freq;
     
 	smp_rmb();
     
@@ -248,11 +257,15 @@ static void cpufreq_interactive_timer(unsigned long data)
 	if (load_since_change > cpu_load)
 		cpu_load = load_since_change;
     
+	cur_max = get_cur_max(pcpu->policy->cpu);
+
+	max_freq = cur_max >= pcpu->policy->max ? pcpu->policy->max : cur_max;
+
 	/* Lets divide by up_threshold so that the device uses more freqs */
-	new_freq = pcpu->policy->max * cpu_load / up_threshold;
+	new_freq = max_freq * cpu_load / up_threshold;
 
 	if (cpu_load >= up_threshold)
-		new_freq = pcpu->policy->max;
+		new_freq = max_freq;
 	/* if the cpu load is >= 50% lets bump the cpu to hispeed_freq */
 	else if (cpu_load >= HISPEED_FREQ_LOAD && new_freq < hispeed_freq)
 		new_freq = hispeed_freq;
@@ -319,7 +332,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	}
     
 rearm_if_notmax:
-	if (pcpu->target_freq == pcpu->policy->max)
+	if (pcpu->target_freq == max_freq)
 		return;
     
 rearm:
