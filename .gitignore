@@ -90,3 +90,5 @@ build.sh
 flash.sh
 mkboot/
 zip/
+aosp.sh
+jss.sh
