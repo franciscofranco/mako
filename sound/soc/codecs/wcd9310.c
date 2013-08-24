@@ -3843,6 +3843,7 @@ static int tabla_readable(struct snd_soc_codec *ssc, unsigned int reg)
 
 	return tabla_reg_readable[reg];
 }
+
 static bool tabla_is_digital_gain_register(unsigned int reg)
 {
 	bool rtn = false;
@@ -3911,7 +3912,10 @@ static int tabla_volatile(struct snd_soc_codec *ssc, unsigned int reg)
 }
 
 #define TABLA_FORMATS (SNDRV_PCM_FMTBIT_S16_LE)
-static int tabla_write(struct snd_soc_codec *codec, unsigned int reg,
+#ifndef CONFIG_SOUND_CONTROL_HAX_GPL
+static
+#endif
+int tabla_write(struct snd_soc_codec *codec, unsigned int reg,
 	unsigned int value)
 {
 	int ret;
@@ -3926,7 +3930,14 @@ static int tabla_write(struct snd_soc_codec *codec, unsigned int reg,
 
 	return wcd9xxx_reg_write(codec->control_data, reg, value);
 }
-static unsigned int tabla_read(struct snd_soc_codec *codec,
+#ifdef CONFIG_SOUND_CONTROL_HAX_GPL
+EXPORT_SYMBOL(tabla_write);
+#endif
+
+#ifndef CONFIG_SOUND_CONTROL_HAX_GPL
+static
+#endif
+unsigned int tabla_read(struct snd_soc_codec *codec,
 				unsigned int reg)
 {
 	unsigned int val;
@@ -8458,6 +8469,7 @@ static int tabla_codec_probe(struct snd_soc_codec *codec)
 	control = codec->control_data;
 
 	tabla = kzalloc(sizeof(struct tabla_priv), GFP_KERNEL);
+
 	if (!tabla) {
 		dev_err(codec->dev, "Failed to allocate private data\n");
 		return -ENOMEM;
