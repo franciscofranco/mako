@@ -38,6 +38,14 @@
 #include <linux/suspend.h>
 #include "wcd9310.h"
 
+struct sound_control {
+	unsigned int default_headset_val;
+	unsigned int default_headphones_val;
+	struct snd_soc_codec *sound_control_codec;
+};
+
+static struct sound_control soundcontrol;
+
 static int cfilt_adjust_ms = 10;
 module_param(cfilt_adjust_ms, int, 0644);
 MODULE_PARM_DESC(cfilt_adjust_ms, "delay after adjusting cfilt voltage in ms");
@@ -8361,45 +8369,44 @@ static const struct file_operations codec_mbhc_debug_ops = {
 #endif
 
 #ifdef CONFIG_SOUND_CONTROL
-
-#define HEADSET_MAX_DEFAULT 12
-#define HEADSET_MIN_DEFAULT 0
-#define HEADPHONES_MAX_DEFAULT 40
-#define HEADPHONES_MIN_DEFAULT -84
-
-struct snd_kcontrol_new *kcontrol = (struct snd_kcontrol_new *) tabla_snd_controls;
-struct soc_mixer_control *left_mixer, *right_mixer, *left_headset_mixer, *right_headset_mixer;
-
 void update_headphones_volume_boost(int vol_boost)
 {
-	left_mixer = (struct soc_mixer_control *) kcontrol[8].private_value;
-	right_mixer = (struct soc_mixer_control *) kcontrol[9].private_value;
+	unsigned int default_val = soundcontrol.default_headphones_val;
+	unsigned int boosted_val = default_val + vol_boost;
 
-	left_mixer->platform_max = HEADPHONES_MAX_DEFAULT + vol_boost;
-	left_mixer->max = HEADPHONES_MAX_DEFAULT + vol_boost;
-	left_mixer->min = HEADPHONES_MIN_DEFAULT + vol_boost;
-	pr_info("Left headphone max: %d - Left headphone min: %d\n", left_mixer->max, left_mixer->min);
-
-	right_mixer->platform_max = HEADPHONES_MAX_DEFAULT + vol_boost;
-	right_mixer->max = HEADPHONES_MAX_DEFAULT  + vol_boost;
-	right_mixer->min = HEADPHONES_MIN_DEFAULT + vol_boost;
-	pr_info("Right headphone max: %d - Right headphone min: %d\n", right_mixer->max, right_mixer->min);
+	pr_info("Sound Control: Headphones default value %d\n", default_val);
+	
+	tabla_write(soundcontrol.sound_control_codec, 
+				TABLA_A_CDC_RX1_VOL_CTL_B2_CTL, boosted_val);
+	tabla_write(soundcontrol.sound_control_codec, 
+				TABLA_A_CDC_RX2_VOL_CTL_B2_CTL, boosted_val);
+	
+	pr_info("Sound Control: Boosted Headphones RX1 value %d\n", 
+			tabla_read(soundcontrol.sound_control_codec, 
+						TABLA_A_CDC_RX1_VOL_CTL_B2_CTL));
+	pr_info("Sound Control: Boosted Headphones RX2 value %d\n", 
+			tabla_read(soundcontrol.sound_control_codec, 
+						TABLA_A_CDC_RX2_VOL_CTL_B2_CTL));
 }
 
 void update_headset_volume_boost(int vol_boost)
 {
-	left_headset_mixer = (struct soc_mixer_control *) kcontrol[6].private_value;
-	right_headset_mixer = (struct soc_mixer_control *) kcontrol[7].private_value;
+	unsigned int default_val = soundcontrol.default_headset_val;
+	unsigned int boosted_val = default_val + vol_boost;
 
-	right_headset_mixer->platform_max = HEADSET_MAX_DEFAULT + vol_boost;
-	right_headset_mixer->max = HEADSET_MAX_DEFAULT + vol_boost;
-	right_headset_mixer->min = HEADSET_MIN_DEFAULT + vol_boost;
-	pr_info("Right headset max: %d - Right headset min: %d\n", right_headset_mixer->max, right_headset_mixer->min);
-
-	left_headset_mixer->platform_max = HEADSET_MAX_DEFAULT + vol_boost;
-	left_headset_mixer->max = HEADSET_MAX_DEFAULT + vol_boost;
-	left_headset_mixer->min = HEADSET_MIN_DEFAULT + vol_boost;
-	pr_info("Left headset max: %d - Left headset min: %d\n", left_headset_mixer->max, left_headset_mixer->min);
+	pr_info("Sound Control: Headset default value %d\n", default_val);
+	
+	tabla_write(soundcontrol.sound_control_codec, 
+				TABLA_A_RX_HPH_L_GAIN, boosted_val);
+	tabla_write(soundcontrol.sound_control_codec, 
+				TABLA_A_RX_HPH_R_GAIN, boosted_val);
+	
+	pr_info("Sound Control: Boosted Headset L value %d\n", 
+			tabla_read(soundcontrol.sound_control_codec, 
+						TABLA_A_RX_HPH_L_GAIN));
+	pr_info("Sound Control: Boosted Headset R value %d\n", 
+			tabla_read(soundcontrol.sound_control_codec, 
+						TABLA_A_RX_HPH_R_GAIN));
 }
 #endif
 
@@ -8412,6 +8419,8 @@ static int tabla_codec_probe(struct snd_soc_codec *codec)
 	int ret = 0;
 	int i;
 	int ch_cnt;
+
+	soundcontrol.sound_control_codec = codec;  
 
 	codec->control_data = dev_get_drvdata(codec->dev->parent);
 	control = codec->control_data;
@@ -8636,6 +8645,14 @@ static int tabla_codec_probe(struct snd_soc_codec *codec)
 	}
 #endif
 	codec->ignore_pmdown_time = 1;
+
+	/*
+	 * Get the defaults using the tabla helper read reg function
+	 */
+	soundcontrol.default_headset_val = tabla_read(codec, TABLA_A_RX_HPH_L_GAIN);
+	soundcontrol.default_headphones_val = tabla_read(codec, 
+												TABLA_A_CDC_RX1_VOL_CTL_B2_CTL);
+
 	return ret;
 
 err_hphr_ocp_irq:
