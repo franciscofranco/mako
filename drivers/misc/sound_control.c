@@ -10,15 +10,8 @@
 #include <linux/device.h>
 #include <linux/miscdevice.h>
 
-#define SOUNDCONTROL_VERSION 2
+#define SOUNDCONTROL_VERSION 3
 
-/*
- * Update function callback into the sound card driver.
- * Changing the value while listening to something won't
- * boost it. You gotta pause it, change the value, wait 2 or 3
- * seconds and then it should be boosted.
- * @vol_boost: new volume boost passed to the sound card driver
- */
 extern void update_headphones_volume_boost(unsigned int vol_boost);
 
 extern void update_headset_volume_boost(int gain_boost);
