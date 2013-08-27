@@ -99,7 +99,9 @@ static void __cpuinit decide_hotplug_func(struct work_struct *work)
         if (!cpu_online(2))
         {
             cpu_up(2);
-            scale_interactive_tunables(0, 10000, 80000);
+
+			if (interactive_selected)
+				scale_interactive_tunables(0, 10000, 80000);
         }
     }
     else
@@ -107,7 +109,9 @@ static void __cpuinit decide_hotplug_func(struct work_struct *work)
         if (cpu_online(2))
         {
             cpu_down(2);
-            scale_interactive_tunables(20000, 40000, 20000);
+
+			if (interactive_selected)
+				scale_interactive_tunables(20000, 40000, 20000);
         }   
     }
     
@@ -116,7 +120,9 @@ static void __cpuinit decide_hotplug_func(struct work_struct *work)
         if (!cpu_online(3))
         {
             cpu_up(3);
-            scale_interactive_tunables(0, 10000, 80000);
+
+			if (interactive_selected)
+				scale_interactive_tunables(0, 10000, 80000);
         }
     }
 
@@ -125,7 +131,9 @@ static void __cpuinit decide_hotplug_func(struct work_struct *work)
         if (cpu_online(3))
         {
             cpu_down(3);
-            scale_interactive_tunables(20000, 40000, 20000);
+
+			if (interactive_selected)
+				scale_interactive_tunables(20000, 40000, 20000);
         }   
     }
 

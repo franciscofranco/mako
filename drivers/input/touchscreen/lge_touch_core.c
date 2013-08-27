@@ -809,10 +809,13 @@ static void touch_work_func(struct work_struct *work)
 	int int_pin = 0;
 	int next_work = 0;
 	int ret;
+	
+	if (interactive_selected)
+	{
+		is_touching = true;
+		freq_boosted_time = ktime_to_ms(ktime_get());
+	}
 
-    is_touching = true;
-	freq_boosted_time = ktime_to_ms(ktime_get());
-    
 	atomic_dec(&ts->next_work);
 	ts->ts_data.total_num = 0;
 
