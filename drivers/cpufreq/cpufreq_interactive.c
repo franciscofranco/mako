@@ -123,6 +123,8 @@ static bool dynamic_scaling = true;
  */
 unsigned int get_cur_max(unsigned int cpu);
 
+bool interactive_selected = false;
+
 static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
                                         unsigned int event);
 
@@ -791,6 +793,8 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
             if (atomic_inc_return(&active_count) > 1)
                 return 0;
             
+			interactive_selected = true;
+
             rc = sysfs_create_group(cpufreq_global_kobject,
                                     &interactive_attr_group);
             if (rc)
@@ -817,6 +821,8 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
             if (atomic_dec_return(&active_count) > 0)
                 return 0;
             
+			interactive_selected = false;
+
             sysfs_remove_group(cpufreq_global_kobject,
                                &interactive_attr_group);
             
