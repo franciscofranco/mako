@@ -187,7 +187,6 @@ static void cpufreq_interactive_timer(unsigned long data)
 	unsigned int delta_idle;
 	unsigned int delta_time;
 	int cpu_load;
-	int load_since_change;
 	u64 time_in_idle;
 	u64 idle_exit_time;
 	struct cpufreq_interactive_cpuinfo *pcpu =
@@ -198,9 +197,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	unsigned long flags;
 	unsigned int cur_max;
 	unsigned int max_freq;
-    
-	smp_rmb();
-    
+        
 	if (!pcpu->governor_enabled)
 		return;
     
@@ -219,7 +216,6 @@ static void cpufreq_interactive_timer(unsigned long data)
 	time_in_idle = pcpu->time_in_idle;
 	idle_exit_time = pcpu->idle_exit_time;
 	now_idle = get_cpu_idle_time(data, &pcpu->timer_run_time);
-	smp_wmb();
     
 	/* If we raced with cancelling a timer, skip. */
 	if (!idle_exit_time)
@@ -228,34 +224,11 @@ static void cpufreq_interactive_timer(unsigned long data)
 	delta_idle = (unsigned int)(now_idle - time_in_idle);
 	delta_time = (unsigned int)(pcpu->timer_run_time - idle_exit_time);
     
-	/*
-	 * If timer ran less than 1ms after short-term sample started, retry.
-	 */
-	if (delta_time < 1000)
+	if (WARN_ON_ONCE(!delta_time))
 		goto rearm;
     
-	if (delta_idle > delta_time)
-		cpu_load = 0;
-	else
-		cpu_load = 100 * (delta_time - delta_idle) / delta_time;
-    
-	delta_idle = (unsigned int)(now_idle - pcpu->target_set_time_in_idle);
-	delta_time = (unsigned int)(pcpu->timer_run_time -
-                                pcpu->target_set_time);
-    
-	if ((delta_time == 0) || (delta_idle > delta_time))
-		load_since_change = 0;
-	else
-		load_since_change =
-        100 * (delta_time - delta_idle) / delta_time;
-    
-	/*
-	 * Choose greater of short-term load (since last idle timer
-	 * started or timer function re-armed itself) or long-term load
-	 * (since last frequency change).
-	 */
-	if (load_since_change > cpu_load)
-		cpu_load = load_since_change;
+    cpu_load = delta_idle > delta_time ? 
+                         0 : 100 * (delta_time - delta_idle) / delta_time;
     
 	cur_max = get_cur_max(pcpu->policy->cpu);
 
@@ -266,9 +239,6 @@ static void cpufreq_interactive_timer(unsigned long data)
 
 	if (cpu_load >= up_threshold)
 		new_freq = max_freq;
-	/* if the cpu load is >= 50% lets bump the cpu to hispeed_freq */
-	else if (cpu_load >= HISPEED_FREQ_LOAD && new_freq < hispeed_freq)
-		new_freq = hispeed_freq;
     
 	if (new_freq <= hispeed_freq)
 		pcpu->hispeed_validate_time = pcpu->timer_run_time;
@@ -342,9 +312,7 @@ rearm:
 		 * Else cancel the timer if that CPU goes idle.  We don't
 		 * need to re-evaluate speed until the next idle exit.
 		 */
-		if (pcpu->target_freq == pcpu->policy->min) {
-			smp_rmb();
-            
+		if (pcpu->target_freq == pcpu->policy->min) {            
 			if (pcpu->idling)
 				return;
             
@@ -376,7 +344,6 @@ static void cpufreq_interactive_idle_start(void)
 	}
     
 	pcpu->idling = 1;
-	smp_wmb();
 	pending = timer_pending(&pcpu->cpu_timer);
     
 	if (pcpu->target_freq != pcpu->policy->min) {
@@ -424,7 +391,6 @@ static void cpufreq_interactive_idle_end(void)
     &per_cpu(cpuinfo, smp_processor_id());
     
 	pcpu->idling = 0;
-	smp_wmb();
     
 	/*
 	 * Arm the timer for 1-2 ticks later if not already, and if the timer
@@ -481,7 +447,6 @@ static int cpufreq_interactive_up_task(void *data)
 			unsigned int max_freq = 0;
             
 			pcpu = &per_cpu(cpuinfo, cpu);
-			smp_rmb();
             
 			if (!pcpu->governor_enabled)
 				continue;
@@ -524,7 +489,6 @@ static void cpufreq_interactive_freq_down(struct work_struct *work)
 		unsigned int max_freq = 0;
         
 		pcpu = &per_cpu(cpuinfo, cpu);
-		smp_rmb();
         
 		if (!pcpu->governor_enabled)
 			continue;
@@ -818,7 +782,6 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
                 pcpu->idle_exit_time = pcpu->target_set_time;
                 mod_timer_pinned(&pcpu->cpu_timer,
                                  jiffies + usecs_to_jiffies(timer_rate));
-                smp_wmb();
             }
             
             /*
@@ -839,7 +802,6 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
             for_each_cpu(j, policy->cpus) {
                 pcpu = &per_cpu(cpuinfo, j);
                 pcpu->governor_enabled = 0;
-                smp_wmb();
                 del_timer_sync(&pcpu->cpu_timer);
                 
                 /*
