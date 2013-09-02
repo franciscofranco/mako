@@ -32,6 +32,11 @@
 #define HIGH_LOAD_COUNTER 20
 #define TIMER HZ
 
+/*
+ * 1000ms = 1 second
+ */
+#define MIN_TIME_CPU_ONLINE_MS 1000
+
 struct cpu_stats
 {
     unsigned int default_first_level;
@@ -39,12 +44,14 @@ struct cpu_stats
     unsigned int cores_on_touch;
 
     unsigned int counter[2];
+	unsigned long timestamp[2];
 };
 
 static struct cpu_stats stats;
 static struct workqueue_struct *wq;
 static struct delayed_work decide_hotplug;
 
+#if 0
 static void scale_interactive_tunables(unsigned int above_hispeed_delay,
     unsigned int timer_rate, 
     unsigned int min_sample_time)
@@ -53,25 +60,64 @@ static void scale_interactive_tunables(unsigned int above_hispeed_delay,
     scale_timer_rate(timer_rate);
     scale_min_sample_time(min_sample_time);
 }
+#endif
+
+static inline void calc_cpu_hotplug(unsigned int counter0,
+									unsigned int counter1)
+{
+	bool online_cpu2 = counter0 >= 10;
+	bool online_cpu3 = counter1 >= 10;
+
+	if (online_cpu2)
+	{
+		if (cpu_is_offline(2))
+		{
+			cpu_up(2);
+			stats.timestamp[0] = ktime_to_ms(ktime_get());		
+		}
+	}
+	else if (cpu_online(2))
+	{
+		/*
+		 * Let's not unplug this cpu unless its been online for longer than 1
+		 * second to avoid consecutive ups and downs if the load is varying
+		 * closer to the threshold point.
+		 */
+		if (ktime_to_ms(ktime_get()) + MIN_TIME_CPU_ONLINE_MS 
+				> stats.timestamp[0])
+			cpu_down(2);
+	} 
+	
+	if (online_cpu3)
+	{
+		if (cpu_is_offline(3))
+		{
+			cpu_up(3);
+			stats.timestamp[1] = ktime_to_ms(ktime_get());		
+		}
+	}
+	else if (cpu_online(3))
+	{
+		if (ktime_to_ms(ktime_get()) + MIN_TIME_CPU_ONLINE_MS 
+				> stats.timestamp[1])
+			cpu_down(3);
+	}
+}
 
 static void __cpuinit decide_hotplug_func(struct work_struct *work)
 {
     int cpu;
     int cpu_boost;
 
-    if (is_touching)
-    {
-		if (num_online_cpus() < stats.cores_on_touch)
+	if (interactive_selected)
+	{
+		if (is_touching && num_online_cpus() < stats.cores_on_touch)
 		{
-        	for_each_possible_cpu(cpu_boost)
-        	{
-            	if (!cpu_online(cpu_boost) && cpu_boost < stats.cores_on_touch) 
-            	{
+			for (cpu_boost = 2; cpu_boost < stats.cores_on_touch; cpu_boost++)
+            	if (cpu_is_offline(cpu_boost)) 
             	    cpu_up(cpu_boost);
-            	}
-        	}
 		}
-    }
+	}
 
     for_each_online_cpu(cpu) 
     {
@@ -87,56 +133,12 @@ static void __cpuinit decide_hotplug_func(struct work_struct *work)
                 stats.counter[cpu]--;
         }
 
-        if (cpu) 
-        {
-            cpu = 0;
-            break;
-        }
+		if (cpu)
+			break;
     }
 
-    if (stats.counter[0] >= 10)
-    {
-        if (!cpu_online(2))
-        {
-            cpu_up(2);
-
-			if (interactive_selected)
-				scale_interactive_tunables(0, 10000, 80000);
-        }
-    }
-    else
-    {
-        if (cpu_online(2))
-        {
-            cpu_down(2);
-
-			if (interactive_selected)
-				scale_interactive_tunables(20000, 40000, 20000);
-        }   
-    }
-    
-    if (stats.counter[1] >= 10)
-    {
-        if (!cpu_online(3))
-        {
-            cpu_up(3);
-
-			if (interactive_selected)
-				scale_interactive_tunables(0, 10000, 80000);
-        }
-    }
-
-    else
-    {
-        if (cpu_online(3))
-        {
-            cpu_down(3);
-
-			if (interactive_selected)
-				scale_interactive_tunables(20000, 40000, 20000);
-        }   
-    }
-
+	calc_cpu_hotplug(stats.counter[0], stats.counter[1]);
+	
     queue_delayed_work(wq, &decide_hotplug, msecs_to_jiffies(TIMER));
 }
 
@@ -153,9 +155,7 @@ static void __cpuinit mako_hotplug_early_suspend(struct early_suspend *handler)
     for_each_online_cpu(cpu) 
     {
         if (cpu) 
-        {
             cpu_down(cpu);
-        }
     }
 
     
@@ -174,9 +174,7 @@ static void __cpuinit mako_hotplug_late_resume(struct early_suspend *handler)
     for_each_possible_cpu(cpu) 
     {
         if (cpu) 
-        {
             cpu_up(cpu);
-        }
     }
 
     stats.counter[0] = 0;
