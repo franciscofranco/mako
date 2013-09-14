@@ -1,4 +1,4 @@
-/* Copyright (c) 2002,2007-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2002,2007-2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -19,7 +19,6 @@
 #include "kgsl_mmu.h"
 #include <linux/slab.h>
 #include <linux/kmemleak.h>
-#include <linux/iommu.h>
 
 #include "kgsl_log.h"
 
@@ -201,24 +200,15 @@ kgsl_memdesc_has_guard_page(const struct kgsl_memdesc *memdesc)
 /*
  * kgsl_memdesc_protflags - get mmu protection flags
  * @memdesc - the memdesc
- * Returns a mask of GSL_PT_PAGE* or IOMMU* values based
- * on the memdesc flags.
+ * Returns a mask of GSL_PT_PAGE* values based on the
+ * memdesc flags.
  */
 static inline unsigned int
 kgsl_memdesc_protflags(const struct kgsl_memdesc *memdesc)
 {
-	unsigned int protflags = 0;
-	enum kgsl_mmutype mmutype = kgsl_mmu_get_mmutype();
-
-	if (mmutype == KGSL_MMU_TYPE_GPU) {
-		protflags = GSL_PT_PAGE_RV;
-		if (!(memdesc->flags & KGSL_MEMFLAGS_GPUREADONLY))
-			protflags |= GSL_PT_PAGE_WV;
-	} else if (mmutype == KGSL_MMU_TYPE_IOMMU) {
-		protflags = IOMMU_READ;
-		if (!(memdesc->flags & KGSL_MEMFLAGS_GPUREADONLY))
-			protflags |= IOMMU_WRITE;
-	}
+	unsigned int protflags = GSL_PT_PAGE_RV;
+	if (!(memdesc->flags & KGSL_MEMFLAGS_GPUREADONLY))
+		protflags |= GSL_PT_PAGE_WV;
 	return protflags;
 }
 
@@ -263,7 +253,8 @@ kgsl_allocate(struct kgsl_memdesc *memdesc,
 	ret = kgsl_sharedmem_page_alloc(memdesc, pagetable, size);
 	if (ret)
 		return ret;
-	ret = kgsl_mmu_map(pagetable, memdesc);
+	ret = kgsl_mmu_map(pagetable, memdesc,
+			   kgsl_memdesc_protflags(memdesc));
 	if (ret)
 		kgsl_sharedmem_free(memdesc);
 	return ret;
@@ -300,4 +291,15 @@ kgsl_allocate_contiguous(struct kgsl_memdesc *memdesc, size_t size)
 	return ret;
 }
 
+static inline int kgsl_sg_size(struct scatterlist *sg, int sglen)
+{
+	int i, size = 0;
+	struct scatterlist *s;
+
+	for_each_sg(sg, s, sglen, i) {
+		size += s->length;
+	}
+
+	return size;
+}
 #endif /* __KGSL_SHAREDMEM_H */

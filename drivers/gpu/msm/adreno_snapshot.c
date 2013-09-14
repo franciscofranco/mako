@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -160,12 +160,6 @@ static unsigned int vfd_control_0;
 
 static unsigned int sp_vs_pvt_mem_addr;
 static unsigned int sp_fs_pvt_mem_addr;
-
-/*
- * Cached value of SP_VS_OBJ_START_REG and SP_FS_OBJ_START_REG.
- */
-static unsigned int sp_vs_obj_start_reg;
-static unsigned int sp_fs_obj_start_reg;
 
 /*
  * Each load state block has two possible types.  Each type has a different
@@ -379,26 +373,6 @@ static int ib_parse_draw_indx(struct kgsl_device *device, unsigned int *pkt,
 		sp_fs_pvt_mem_addr = 0;
 	}
 
-	if (sp_vs_obj_start_reg) {
-		ret = kgsl_snapshot_get_object(device, ptbase,
-			sp_vs_obj_start_reg & 0xFFFFFFE0, 0,
-			SNAPSHOT_GPU_OBJECT_GENERIC);
-		if (ret < 0)
-			return -EINVAL;
-		snapshot_frozen_objsize += ret;
-		sp_vs_obj_start_reg = 0;
-	}
-
-	if (sp_fs_obj_start_reg) {
-		ret = kgsl_snapshot_get_object(device, ptbase,
-			sp_fs_obj_start_reg & 0xFFFFFFE0, 0,
-			SNAPSHOT_GPU_OBJECT_GENERIC);
-		if (ret < 0)
-			return -EINVAL;
-		snapshot_frozen_objsize += ret;
-		sp_fs_obj_start_reg = 0;
-	}
-
 	/* Finally: VBOs */
 
 	/* The number of active VBOs is stored in VFD_CONTROL_O[31:27] */
@@ -470,7 +444,7 @@ static void ib_parse_type0(struct kgsl_device *device, unsigned int *ptr,
 	int offset = type0_pkt_offset(*ptr);
 	int i;
 
-	for (i = 0; i < size - 1; i++, offset++) {
+	for (i = 0; i < size; i++, offset++) {
 
 		/* Visiblity stream buffer */
 
@@ -531,19 +505,10 @@ static void ib_parse_type0(struct kgsl_device *device, unsigned int *ptr,
 			case A3XX_SP_FS_PVT_MEM_ADDR_REG:
 				sp_fs_pvt_mem_addr = ptr[i + 1];
 				break;
-			case A3XX_SP_VS_OBJ_START_REG:
-				sp_vs_obj_start_reg = ptr[i + 1];
-				break;
-			case A3XX_SP_FS_OBJ_START_REG:
-				sp_fs_obj_start_reg = ptr[i + 1];
-				break;
 			}
 		}
 	}
 }
-
-static inline int parse_ib(struct kgsl_device *device, unsigned int ptbase,
-		unsigned int gpuaddr, unsigned int dwords);
 
 /* Add an IB as a GPU object, but first, parse it to find more goodies within */
 
@@ -584,12 +549,32 @@ static int ib_add_gpu_object(struct kgsl_device *device, unsigned int ptbase,
 			if (adreno_cmd_is_ib(src[i])) {
 				unsigned int gpuaddr = src[i + 1];
 				unsigned int size = src[i + 2];
+				unsigned int ibbase;
 
-				ret = parse_ib(device, ptbase, gpuaddr, size);
+				/* Address of the last processed IB2 */
+				kgsl_regread(device, REG_CP_IB2_BASE, &ibbase);
 
-				/* If adding the IB failed then stop parsing */
-				if (ret < 0)
-					goto done;
+				/*
+				 * If this is the last IB2 that was executed,
+				 * then push it to make sure it goes into the
+				 * static space
+				 */
+
+				if (ibbase == gpuaddr)
+					push_object(device,
+						SNAPSHOT_OBJ_TYPE_IB, ptbase,
+						gpuaddr, size);
+				else {
+					ret = ib_add_gpu_object(device,
+						ptbase, gpuaddr, size);
+
+					/*
+					 * If adding the IB failed then stop
+					 * parsing
+					 */
+					if (ret < 0)
+						goto done;
+				}
 			} else {
 				ret = ib_parse_type3(device, &src[i], ptbase);
 				/*
@@ -615,36 +600,6 @@ done:
 
 	if (ret >= 0)
 		snapshot_frozen_objsize += ret;
-
-	return ret;
-}
-
-/*
- * We want to store the last executed IB1 and IB2 in the static region to ensure
- * that we get at least some information out of the snapshot even if we can't
- * access the dynamic data from the sysfs file.  Push all other IBs on the
- * dynamic list
- */
-static inline int parse_ib(struct kgsl_device *device, unsigned int ptbase,
-		unsigned int gpuaddr, unsigned int dwords)
-{
-	unsigned int ib1base, ib2base;
-	int ret = 0;
-
-	/*
-	 * Check the IB address - if it is either the last executed IB1 or the
-	 * last executed IB2 then push it into the static blob otherwise put
-	 * it in the dynamic list
-	 */
-
-	kgsl_regread(device, REG_CP_IB1_BASE, &ib1base);
-	kgsl_regread(device, REG_CP_IB2_BASE, &ib2base);
-
-	if (gpuaddr == ib1base || gpuaddr == ib2base)
-		push_object(device, SNAPSHOT_OBJ_TYPE_IB, ptbase,
-			gpuaddr, dwords);
-	else
-		ret = ib_add_gpu_object(device, ptbase, gpuaddr, dwords);
 
 	return ret;
 }
@@ -785,13 +740,13 @@ static int snapshot_rb(struct kgsl_device *device, void *snapshot,
 
 			struct kgsl_memdesc *memdesc =
 				adreno_find_ctxtmem(device, ptbase, ibaddr,
-					ibsize << 2);
+					ibsize);
 
 			/* IOMMU uses a NOP IB placed in setsate memory */
 			if (NULL == memdesc)
 				if (kgsl_gpuaddr_in_memdesc(
 						&device->mmu.setstate_memory,
-						ibaddr, ibsize << 2))
+						ibaddr, ibsize))
 					memdesc = &device->mmu.setstate_memory;
 			/*
 			 * The IB from CP_IB1_BASE and the IBs for legacy
@@ -799,11 +754,12 @@ static int snapshot_rb(struct kgsl_device *device, void *snapshot,
 			 * others get marked at GPU objects
 			 */
 
-			if (memdesc != NULL)
+			if (ibaddr == ibbase || memdesc != NULL)
 				push_object(device, SNAPSHOT_OBJ_TYPE_IB,
 					ptbase, ibaddr, ibsize);
 			else
-				parse_ib(device, ptbase, ibaddr, ibsize);
+				ib_add_gpu_object(device, ptbase, ibaddr,
+					ibsize);
 		}
 
 		index = index + 1;
@@ -848,14 +804,15 @@ static int snapshot_ib(struct kgsl_device *device, void *snapshot,
 				continue;
 
 			if (adreno_cmd_is_ib(*src))
-				ret = parse_ib(device, obj->ptbase, src[1],
-					src[2]);
-			else
+				push_object(device, SNAPSHOT_OBJ_TYPE_IB,
+					obj->ptbase, src[1], src[2]);
+			else {
 				ret = ib_parse_type3(device, src, obj->ptbase);
 
-			/* Stop parsing if the type3 decode fails */
-			if (ret < 0)
-				break;
+				/* Stop parsing if the type3 decode fails */
+				if (ret < 0)
+					break;
+			}
 		}
 	}
 
