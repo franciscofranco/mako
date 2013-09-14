@@ -89,7 +89,7 @@ static ssize_t tz_governor_show(struct kgsl_device *device,
 	if (priv->governor == TZ_GOVERNOR_ONDEMAND)
 		ret = snprintf(buf, 10, "ondemand\n");
     	else if (priv->governor == TZ_GOVERNOR_INTERACTIVE)
-		ret = snprintf(buf, 11, "interactive\n");
+		ret = snprintf(buf, 13, "interactive\n");
 	else
 		ret = snprintf(buf, 13, "performance\n");
 
@@ -204,6 +204,12 @@ static void tz_busy(struct kgsl_device *device,
 static void tz_sleep(struct kgsl_device *device,
 	struct kgsl_pwrscale *pwrscale)
 {
+	struct tz_priv *priv = pwrscale->priv;
+
+	kgsl_pwrctrl_pwrlevel_change(device, 3);
+	priv->bin.total_time = 0;
+	priv->bin.busy_time = 0;
+	window_time = jiffies;
 	return;
 }
 
