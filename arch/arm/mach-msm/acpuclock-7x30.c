@@ -163,7 +163,7 @@ static void acpuclk_config_pll2(struct pll *pll)
 	mb();
 }
 
-/* Set clock source and divider given a clock speed */
+/* Set clock source and divider given a speed */
 static void acpuclk_set_src(const struct clkctl_acpu_speed *s)
 {
 	uint32_t reg_clksel, reg_clkctl, src_sel;
