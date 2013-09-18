@@ -39,7 +39,7 @@ struct cpus cpu_stats;
  */
 unsigned int polling = HZ*2;
 
-unsigned int temp_threshold = 65;
+unsigned int temp_threshold = 70;
 module_param(temp_threshold, int, 0755);
 
 static struct msm_thermal_data msm_thermal_info;
@@ -100,7 +100,7 @@ static void check_temp(struct work_struct *work)
 	}
     
 	/* the device is in safe temperature, polling is normal (every second) */
-	else if (temp < (temp_threshold - 10))
+	else if (temp < (temp_threshold - 5))
 	{
         if (cpu_stats.throttling)
         {
