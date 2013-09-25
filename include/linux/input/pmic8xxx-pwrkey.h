@@ -13,6 +13,8 @@
 #ifndef __PMIC8XXX_PWRKEY_H__
 #define __PMIC8XXX_PWRKEY_H__
 
+#include <linux/input.h>
+
 #define PM8XXX_PWRKEY_DEV_NAME "pm8xxx-pwrkey"
 
 /**
@@ -34,5 +36,7 @@ struct pm8xxx_pwrkey_platform_data  {
 	u32  kpd_trigger_delay_us;
 	u32  wakeup;
 };
+
+void wake_up_display(struct input_dev *input_dev);
 
 #endif /* __PMIC8XXX_PWRKEY_H__ */

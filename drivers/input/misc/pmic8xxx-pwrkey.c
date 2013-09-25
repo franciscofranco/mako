@@ -213,6 +213,8 @@ static int __devinit pmic8xxx_pwrkey_probe(struct platform_device *pdev)
 
 	device_init_wakeup(&pdev->dev, pdata->wakeup);
 
+	wake_up_display(pwr);
+
 	return 0;
 
 free_press_irq:
