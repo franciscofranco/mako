@@ -76,10 +76,6 @@ static int msm_cpuidle_enter(
 	enum msm_pm_sleep_mode pm_mode;
 	struct cpuidle_state_usage *st_usage = NULL;
 
-#ifdef CONFIG_CPU_PM
-	cpu_pm_enter();
-#endif
-
 	pm_mode = msm_pm_idle_prepare(dev, drv, index);
 	dev->last_residency = msm_pm_idle_enter(pm_mode);
 	for (i = 0; i < dev->state_count; i++) {
@@ -90,10 +86,6 @@ static int msm_cpuidle_enter(
 			break;
 		}
 	}
-
-#ifdef CONFIG_CPU_PM
-	cpu_pm_exit();
-#endif
 
 	local_irq_enable();
 
