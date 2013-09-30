@@ -238,8 +238,7 @@ int __init mako_hotplug_init(void)
     stats.counter[0] = 0;
     stats.counter[1] = 0;
 
-    wq = alloc_workqueue("mako_hotplug_workqueue", 
-                    WQ_UNBOUND | WQ_RESCUER | WQ_FREEZABLE, 1);
+    wq = alloc_workqueue("mako_hotplug_workqueue", WQ_FREEZABLE, 1);
     
     if (!wq)
         return -ENOMEM;
