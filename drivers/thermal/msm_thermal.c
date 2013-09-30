@@ -26,6 +26,7 @@
 #include <mach/cpufreq.h>
 
 #define THROTTLE_FREQUENCY 1026000
+#define PANIC_THROTTLE_FREQUENCY 702600
 
 struct cpus {
     bool throttling;
@@ -58,6 +59,10 @@ static void limit_cpu_freqs(unsigned int freq)
     
     for_each_present_cpu(cpu)
     {
+		struct cpufreq_policy *policy;
+		policy = cpufreq_cpu_get(cpu);
+		__cpufreq_driver_target(policy, freq,
+                                    CPUFREQ_RELATION_H);
         msm_cpufreq_set_freq_limits(cpu, MSM_CPUFREQ_NO_LIMIT, freq);
         pr_info("Thermal Throttling activated: CPU%d limited to %d\n",
                 cpu, freq);
@@ -89,8 +94,19 @@ static void check_temp(struct work_struct *work)
 	tsens_get_temp(&tsens_dev, &temp);
     
 	/* temperature is high, lets throttle even more and
+     poll way faster*/
+	if (temp >= (temp_threshold + 10))
+	{
+        if (!cpu_stats.throttling)
+        {
+            limit_cpu_freqs(PANIC_THROTTLE_FREQUENCY);
+            polling = HZ/8;
+        }
+	}
+
+	/* temperature is high, lets throttle even more and
      poll faster (every .25s) */
-	if (temp >= temp_threshold)
+	else if (temp >= temp_threshold)
 	{
         if (!cpu_stats.throttling)
         {
