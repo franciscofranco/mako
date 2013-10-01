@@ -57,16 +57,24 @@ static void limit_cpu_freqs(unsigned int freq)
 {
     int cpu;
     
+	get_online_cpus();
     for_each_present_cpu(cpu)
     {
-		struct cpufreq_policy *policy;
-		policy = cpufreq_cpu_get(cpu);
-		__cpufreq_driver_target(policy, freq,
-                                    CPUFREQ_RELATION_H);
+		if (cpu_online(cpu))
+		{
+			struct cpufreq_policy *policy;
+			policy = cpufreq_cpu_get(cpu);
+			if (policy->max > freq)
+			{
+				__cpufreq_driver_target(policy, freq,
+                                    		CPUFREQ_RELATION_H);
+			}
+		}
         msm_cpufreq_set_freq_limits(cpu, MSM_CPUFREQ_NO_LIMIT, freq);
         pr_info("Thermal Throttling activated: CPU%d limited to %d\n",
                 cpu, freq);
     }
+	put_online_cpus();
     
     cpu_stats.throttling = true;
 }
