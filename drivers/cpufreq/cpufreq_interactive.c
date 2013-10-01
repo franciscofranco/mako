@@ -101,7 +101,7 @@ static unsigned long above_hispeed_delay_val;
  * The CPU will be boosted to this frequency when the screen is
  * touched. input_boost needs to be enabled.
  */
-#define DEFAULT_INPUT_BOOST_FREQ 1512000
+#define DEFAULT_INPUT_BOOST_FREQ 1242000
 static int input_boost_freq;
 
 /*
