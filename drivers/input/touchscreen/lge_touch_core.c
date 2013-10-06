@@ -34,6 +34,7 @@
 #include <linux/cpufreq.h>
 #include <linux/hotplug.h>
 #include <linux/cpu.h>
+#include <linux/syscalls.h>
 
 #include <linux/input/lge_touch_core.h>
 
@@ -820,6 +821,30 @@ void wake_up_display(struct input_dev *input_dev)
 	return;
 }
 
+#define BOOSTPULSE "/sys/devices/system/cpu/cpufreq/interactive/boostpulse"
+
+struct boost_mako {
+	int boostpulse_fd;
+};
+
+static struct boost_mako boost;
+
+static int boostpulse_open(void)
+{
+	if (boost.boostpulse_fd < 0)
+	{
+		boost.boostpulse_fd = sys_open(BOOSTPULSE, O_WRONLY, 0);
+		
+		if (boost.boostpulse_fd < 0)
+		{
+			pr_info("Error opening %s\n", BOOSTPULSE);
+			return -1;		
+		}
+	}
+
+	return boost.boostpulse_fd;
+}
+
 /*
  * Touch work function
  */
@@ -830,11 +855,19 @@ static void touch_work_func(struct work_struct *work)
 	int int_pin = 0;
 	int next_work = 0;
 	int ret;
+	int len;
 	
 	if (interactive_selected)
 	{
-		is_touching = true;
-		freq_boosted_time = ktime_to_ms(ktime_get());
+		if (boostpulse_open() >= 0)
+		{
+			len = sys_write(boost.boostpulse_fd, "1", sizeof(BOOSTPULSE));
+			
+			if (len < 0)
+			{
+				pr_info("Error writing to %s\n", BOOSTPULSE);			
+			}
+		}
 	}
 
 	if (suspended && doubletap_to_wake)
@@ -1788,6 +1821,8 @@ static int touch_probe(struct i2c_client *client,
 	wake.window_time = jiffies;
 	wake.sample_time_ms = 100;
 	wake.touches = 0;
+
+	boost.boostpulse_fd = -1;
 
 	if (unlikely(touch_debug_mask & DEBUG_TRACE))
 		TOUCH_DEBUG_MSG("\n");
