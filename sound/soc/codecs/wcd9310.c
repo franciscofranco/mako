@@ -38,13 +38,12 @@
 #include <linux/suspend.h>
 #include "wcd9310.h"
 
-struct sound_control {
+static struct sound_control {
 	unsigned int default_headset_val;
 	unsigned int default_headphones_val;
+	unsigned int default_mic_gain_val;
 	struct snd_soc_codec *sound_control_codec;
-};
-
-static struct sound_control soundcontrol;
+} soundcontrol;
 
 static int cfilt_adjust_ms = 10;
 module_param(cfilt_adjust_ms, int, 0644);
@@ -8410,6 +8409,22 @@ void update_headset_volume_boost(int vol_boost)
 			tabla_read(soundcontrol.sound_control_codec, 
 						TABLA_A_RX_HPH_R_GAIN));
 }
+
+void update_mic_gain(int gain_boost)
+{
+	unsigned int default_val = soundcontrol.default_mic_gain_val;
+	unsigned int boosted_val = gain_boost != 0 ? 
+									default_val + gain_boost : default_val;
+
+	pr_info("Sound Control: Mic gain default value %d\n", default_val);
+	
+	tabla_write(soundcontrol.sound_control_codec, 
+				TABLA_A_CDC_TX4_VOL_CTL_GAIN, boosted_val);
+	
+	pr_info("Sound Control: Boosted Mic gain value %d\n", 
+			tabla_read(soundcontrol.sound_control_codec, 
+						TABLA_A_CDC_TX4_VOL_CTL_GAIN));
+}
 #endif
 
 
@@ -8422,7 +8437,7 @@ static int tabla_codec_probe(struct snd_soc_codec *codec)
 	int i;
 	int ch_cnt;
 
-	soundcontrol.sound_control_codec = codec;  
+	soundcontrol.sound_control_codec = codec;
 
 	codec->control_data = dev_get_drvdata(codec->dev->parent);
 	control = codec->control_data;

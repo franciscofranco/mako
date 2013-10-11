@@ -10,11 +10,13 @@
 #include <linux/device.h>
 #include <linux/miscdevice.h>
 
-#define SOUNDCONTROL_VERSION 3
+#define SOUNDCONTROL_VERSION 4
 
 extern void update_headphones_volume_boost(unsigned int vol_boost);
 
 extern void update_headset_volume_boost(int gain_boost);
+
+extern void update_mic_gain(int gain_boost);
 
 /*
  * Volume boost value
@@ -26,6 +28,9 @@ int boost_limit_min = -20;
 int headset_boost = 0;
 int headset_boost_limit = 30;
 int headset_boost_limit_min = -30;
+
+int mic_gain = 0;
+int mic_gain_limit = 10;
 
 /*
  * Sysfs get/set entries
@@ -85,20 +90,46 @@ static ssize_t headset_boost_store(struct device * dev, struct device_attribute 
     return size;
 }
 
+static ssize_t mic_gain_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    return sprintf(buf, "%d\n", mic_gain);
+}
+
+static ssize_t mic_gain_store(struct device * dev, struct device_attribute * attr, const char * buf, size_t size)
+{
+    int new_val;
+
+	sscanf(buf, "%d", &new_val);
+
+	if (new_val != mic_gain) {
+		if (new_val >= mic_gain_limit)
+			new_val = mic_gain_limit;
+
+		pr_info("New Mic gain_boost: %d\n", new_val);
+
+		mic_gain = new_val;
+		update_headset_volume_boost(mic_gain);
+	}
+
+    return size;
+}
+
 static ssize_t soundcontrol_version(struct device * dev, struct device_attribute * attr, char * buf)
 {
     return sprintf(buf, "%d\n", SOUNDCONTROL_VERSION);
 }
 
-static DEVICE_ATTR(volume_boost, 0777, volume_boost_show, volume_boost_store);
-static DEVICE_ATTR(headset_boost, 0777, headset_boost_show, headset_boost_store);
+static DEVICE_ATTR(volume_boost, 0664, volume_boost_show, volume_boost_store);
+static DEVICE_ATTR(headset_boost, 0664, headset_boost_show, headset_boost_store);
+static DEVICE_ATTR(mic_gain, 0664, mic_gain_show, mic_gain_store);
 
-static DEVICE_ATTR(version, 0777 , soundcontrol_version, NULL);
+static DEVICE_ATTR(version, 0664 , soundcontrol_version, NULL);
 
 static struct attribute *soundcontrol_attributes[] = 
 {
 	&dev_attr_volume_boost.attr,
 	&dev_attr_headset_boost.attr,
+	&dev_attr_mic_gain.attr,
 	&dev_attr_version.attr,
 	NULL
 };
