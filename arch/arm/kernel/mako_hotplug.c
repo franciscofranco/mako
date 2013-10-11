@@ -23,6 +23,8 @@
 #include <linux/cpufreq.h>
 #include <linux/delay.h>
 #include <linux/hotplug.h>
+#include <linux/input/lge_touch_core.h>
+#include <linux/input.h>
  
 #include <mach/cpufreq.h>
 
@@ -37,7 +39,7 @@
  */
 #define MIN_TIME_CPU_ONLINE_MS 1000
 
-struct cpu_stats
+static struct cpu_stats
 {
     unsigned int default_first_level;
     unsigned int suspend_frequency;
@@ -45,9 +47,14 @@ struct cpu_stats
 
     unsigned int counter[2];
 	unsigned long timestamp[2];
+} stats = {
+	.default_first_level = DEFAULT_FIRST_LEVEL,
+    .suspend_frequency = DEFAULT_SUSPEND_FREQ,
+    .cores_on_touch = DEFAULT_CORES_ON_TOUCH,
+    .counter = {0},
+	.timestamp = {0},
 };
 
-static struct cpu_stats stats;
 static struct workqueue_struct *wq;
 static struct delayed_work decide_hotplug;
 
@@ -73,7 +80,7 @@ static inline void calc_cpu_hotplug(unsigned int counter0,
 		if (cpu_is_offline(2))
 		{
 			cpu_up(2);
-			stats.timestamp[0] = ktime_to_ms(ktime_get());		
+			stats.timestamp[0] = ktime_to_ms(ktime_get());
 		}
 	}
 	else if (cpu_online(2))
@@ -107,16 +114,19 @@ static inline void calc_cpu_hotplug(unsigned int counter0,
 static void __cpuinit decide_hotplug_func(struct work_struct *work)
 {
     int cpu;
-    int cpu_boost;
-
-	if (interactive_selected)
+	int i;
+	
+	if (_ts->ts_data.curr_data[0].state == ABS_PRESS)
 	{
-		if (is_touching && num_online_cpus() < stats.cores_on_touch)
+		for (i = num_online_cpus(); i < stats.cores_on_touch; i++)
 		{
-			for (cpu_boost = 2; cpu_boost < stats.cores_on_touch; cpu_boost++)
-            	if (cpu_is_offline(cpu_boost)) 
-            	    cpu_up(cpu_boost);
+			if (cpu_is_offline(i))
+			{
+				cpu_up(i);
+				stats.timestamp[i-2] = ktime_to_ms(ktime_get());
+			}
 		}
+		goto re_queue;
 	}
 
     for_each_online_cpu(cpu) 
@@ -138,7 +148,8 @@ static void __cpuinit decide_hotplug_func(struct work_struct *work)
     }
 
 	calc_cpu_hotplug(stats.counter[0], stats.counter[1]);
-	
+
+re_queue:	
     queue_delayed_work(wq, &decide_hotplug, msecs_to_jiffies(TIMER));
 }
 
@@ -170,6 +181,10 @@ static void __cpuinit mako_hotplug_late_resume(struct early_suspend *handler)
 {  
     int cpu;
 
+	/* restore max frequency */
+    msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, MSM_CPUFREQ_NO_LIMIT);
+    pr_info("Cpulimit: Late resume - restore cpu%d max frequency.\n", 0);
+
     /* online all cores when the screen goes online */
     for_each_possible_cpu(cpu) 
     {
@@ -179,10 +194,6 @@ static void __cpuinit mako_hotplug_late_resume(struct early_suspend *handler)
 
     stats.counter[0] = 0;
     stats.counter[1] = 0;
-    
-    /* restore max frequency */
-    msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, MSM_CPUFREQ_NO_LIMIT);
-    pr_info("Cpulimit: Late resume - restore cpu%d max frequency.\n", 0);
     
     pr_info("Late Resume starting Hotplug work...\n");
     queue_delayed_work(wq, &decide_hotplug, HZ);
@@ -230,13 +241,6 @@ unsigned int get_cores_on_touch()
 int __init mako_hotplug_init(void)
 {
 	pr_info("Mako Hotplug driver started.\n");
-    
-    /* init everything here */
-    stats.default_first_level = DEFAULT_FIRST_LEVEL;
-    stats.suspend_frequency = DEFAULT_SUSPEND_FREQ;
-    stats.cores_on_touch = DEFAULT_CORES_ON_TOUCH;
-    stats.counter[0] = 0;
-    stats.counter[1] = 0;
 
     wq = alloc_workqueue("mako_hotplug_workqueue", WQ_FREEZABLE, 1);
     

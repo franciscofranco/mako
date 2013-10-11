@@ -41,4 +41,6 @@ extern unsigned int report_load_at_max_freq(int cpu);
 
 extern bool interactive_selected;
 
+extern struct lge_touch_data *_ts;
+
 #endif
