@@ -44,7 +44,6 @@ static struct cpu_stats
     unsigned int default_first_level;
     unsigned int suspend_frequency;
     unsigned int cores_on_touch;
-
     unsigned int counter[2];
 	unsigned long timestamp[2];
 } stats = {
@@ -72,8 +71,24 @@ static void scale_interactive_tunables(unsigned int above_hispeed_delay,
 static inline void calc_cpu_hotplug(unsigned int counter0,
 									unsigned int counter1)
 {
+	int cpu;
+
 	bool online_cpu2 = counter0 >= 10;
 	bool online_cpu3 = counter1 >= 10;
+
+	if (unlikely(gpu_pref_counter >= 60))
+	{
+		if (num_online_cpus() < num_possible_cpus())
+		{
+			for_each_possible_cpu(cpu)
+			{
+				if (cpu && cpu_is_offline(cpu))
+					cpu_up(cpu);
+			}
+		}
+
+		return;
+	}
 
 	if (online_cpu2)
 	{

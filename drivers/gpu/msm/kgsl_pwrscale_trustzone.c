@@ -74,19 +74,22 @@ unsigned int up_threshold = 60;
 unsigned int down_threshold = 25;
 unsigned int up_differential = 10;
 bool debug = 0;
+unsigned long gpu_pref_counter;
 
 module_param(sample_time_ms, long, 0664);
 module_param(up_threshold, int, 0664);
 module_param(down_threshold, int, 0664);
 module_param(debug, bool, 0664);
 
-struct clk_scaling_stats {
+static struct clk_scaling_stats {
 	unsigned long total_time_ms;
 	unsigned long busy_time_ms;
-	unsigned long threshold;	
+	unsigned long threshold;
+} gpu_stats = {
+	.total_time_ms = 0,
+	.busy_time_ms = 0,
+	.threshold = 0,
 };
-
-static struct clk_scaling_stats gpu_stats;
 
 static ssize_t tz_governor_show(struct kgsl_device *device,
 				struct kgsl_pwrscale *pwrscale,
@@ -204,6 +207,9 @@ static void tz_idle(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 
 	if ((gpu_stats.busy_time_ms * 100) > (gpu_stats.total_time_ms * gpu_stats.threshold))
 	{
+		if (gpu_pref_counter < 100)
+			++gpu_pref_counter;
+
 		if ((pwr->active_pwrlevel > 0) &&
 			(pwr->active_pwrlevel <= (pwr->num_pwrlevels - 1)))
 			kgsl_pwrctrl_pwrlevel_change(device,
@@ -211,6 +217,9 @@ static void tz_idle(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 	}
 	else if ((gpu_stats.busy_time_ms * 100) < (gpu_stats.total_time_ms * down_threshold))
 	{
+		if (gpu_pref_counter > 0)
+			--gpu_pref_counter;
+
 		if ((pwr->active_pwrlevel >= 0) &&
 			(pwr->active_pwrlevel < (pwr->num_pwrlevels - 1)))
 			kgsl_pwrctrl_pwrlevel_change(device,
@@ -240,8 +249,11 @@ static void tz_sleep(struct kgsl_device *device,
 	 */
 	if ((gpu_stats.busy_time_ms * 100) < 
 			(gpu_stats.total_time_ms * down_threshold))
+	{
 		kgsl_pwrctrl_pwrlevel_change(device, 3);
+	}
 
+	gpu_pref_counter = 0;
 	priv->bin.total_time = 0;
 	priv->bin.busy_time = 0;
 	window_time = jiffies;
@@ -253,10 +265,6 @@ static void tz_sleep(struct kgsl_device *device,
 static int tz_init(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 {
 	struct tz_priv *priv;
-
-	gpu_stats.total_time_ms = 0;
-	gpu_stats.busy_time_ms = 0;
-	gpu_stats.threshold = 0;
 
 	priv = pwrscale->priv = kzalloc(sizeof(struct tz_priv), GFP_KERNEL);
 	if (pwrscale->priv == NULL)

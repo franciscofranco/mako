@@ -43,4 +43,6 @@ extern bool interactive_selected;
 
 extern struct lge_touch_data *_ts;
 
+extern unsigned long gpu_pref_counter;
+
 #endif
