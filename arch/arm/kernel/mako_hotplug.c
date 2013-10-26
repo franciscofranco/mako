@@ -46,12 +46,14 @@ static struct cpu_stats
     unsigned int cores_on_touch;
     unsigned int counter[2];
 	unsigned long timestamp[2];
+	bool ready_to_online[2];
 } stats = {
 	.default_first_level = DEFAULT_FIRST_LEVEL,
     .suspend_frequency = DEFAULT_SUSPEND_FREQ,
     .cores_on_touch = DEFAULT_CORES_ON_TOUCH,
     .counter = {0},
 	.timestamp = {0},
+	.ready_to_online = {false},
 };
 
 static struct workqueue_struct *wq;
@@ -72,9 +74,10 @@ static inline void calc_cpu_hotplug(unsigned int counter0,
 									unsigned int counter1)
 {
 	int cpu;
+	int i, k;
 
-	bool online_cpu2 = counter0 >= 10;
-	bool online_cpu3 = counter1 >= 10;
+	stats.ready_to_online[0] = counter0 >= 10;
+	stats.ready_to_online[1] = counter1 >= 10;
 
 	if (unlikely(gpu_pref_counter >= 60))
 	{
@@ -90,43 +93,31 @@ static inline void calc_cpu_hotplug(unsigned int counter0,
 		return;
 	}
 
-	if (online_cpu2)
+	for (i = 0, k = 2; i < 2; i++, k++)
 	{
-		if (cpu_is_offline(2))
+		if (stats.ready_to_online[i])
 		{
-			cpu_up(2);
-			stats.timestamp[0] = ktime_to_ms(ktime_get());
+			if (cpu_is_offline(k))
+			{
+				cpu_up(k);
+				stats.timestamp[i] = ktime_to_ms(ktime_get());
+			}
 		}
-	}
-	else if (cpu_online(2))
-	{
-		/*
-		 * Let's not unplug this cpu unless its been online for longer than 1
-		 * second to avoid consecutive ups and downs if the load is varying
-		 * closer to the threshold point.
-		 */
-		if (ktime_to_ms(ktime_get()) + MIN_TIME_CPU_ONLINE_MS 
-				> stats.timestamp[0])
-			cpu_down(2);
-	} 
-	
-	if (online_cpu3)
-	{
-		if (cpu_is_offline(3))
+		else if (cpu_online(k))
 		{
-			cpu_up(3);
-			stats.timestamp[1] = ktime_to_ms(ktime_get());		
+			/*
+			 * Let's not unplug this cpu unless its been online for longer than
+			 * 1sec to avoid consecutive ups and downs if the load is varying
+			 * closer to the threshold point.
+			 */
+			if (ktime_to_ms(ktime_get()) + MIN_TIME_CPU_ONLINE_MS
+					> stats.timestamp[i])
+				cpu_down(k);
 		}
-	}
-	else if (cpu_online(3))
-	{
-		if (ktime_to_ms(ktime_get()) + MIN_TIME_CPU_ONLINE_MS 
-				> stats.timestamp[1])
-			cpu_down(3);
 	}
 }
 
-static void __cpuinit decide_hotplug_func(struct work_struct *work)
+static inline void __cpuinit decide_hotplug_func(struct work_struct *work)
 {
     int cpu;
 	int i;
@@ -154,8 +145,8 @@ static void __cpuinit decide_hotplug_func(struct work_struct *work)
 
         else
         {
-            if (stats.counter[cpu] > 0)
-                stats.counter[cpu]--;
+            if (stats.counter[cpu])
+                --stats.counter[cpu];
         }
 
 		if (cpu)
@@ -184,7 +175,10 @@ static void __cpuinit mako_hotplug_early_suspend(struct early_suspend *handler)
             cpu_down(cpu);
     }
 
-    
+	/* reset the counters so that we start clean next time the display is on */
+    stats.counter[0] = 0;
+    stats.counter[1] = 0;
+
     /* cap max frequency to 702MHz by default */
     msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, 
             stats.suspend_frequency);
@@ -206,9 +200,6 @@ static void __cpuinit mako_hotplug_late_resume(struct early_suspend *handler)
         if (cpu) 
             cpu_up(cpu);
     }
-
-    stats.counter[0] = 0;
-    stats.counter[1] = 0;
     
     pr_info("Late Resume starting Hotplug work...\n");
     queue_delayed_work(wq, &decide_hotplug, HZ);
