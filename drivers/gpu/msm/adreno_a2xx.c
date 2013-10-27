@@ -1355,7 +1355,7 @@ static int a2xx_create_gmem_shadow(struct adreno_device *adreno_dev,
 	tmp_ctx.gmem_base = adreno_dev->gmem_base;
 
 	result = kgsl_allocate(&drawctxt->context_gmem_shadow.gmemshadow,
-		drawctxt->base.pagetable, drawctxt->context_gmem_shadow.size);
+		drawctxt->pagetable, drawctxt->context_gmem_shadow.size);
 
 	if (result)
 		return result;
@@ -1365,7 +1365,7 @@ static int a2xx_create_gmem_shadow(struct adreno_device *adreno_dev,
 
 	/* blank out gmem shadow. */
 	kgsl_sharedmem_set(&drawctxt->context_gmem_shadow.gmemshadow, 0, 0,
-			drawctxt->context_gmem_shadow.size);
+			   drawctxt->context_gmem_shadow.size);
 
 	/* build quad vertex buffer */
 	build_quad_vtxbuff(drawctxt, &drawctxt->context_gmem_shadow,
@@ -1409,13 +1409,13 @@ static int a2xx_drawctxt_create(struct adreno_device *adreno_dev,
 	 */
 
 	ret = kgsl_allocate(&drawctxt->gpustate,
-		drawctxt->base.pagetable, _context_size(adreno_dev));
+		drawctxt->pagetable, _context_size(adreno_dev));
 
 	if (ret)
 		return ret;
 
-	kgsl_sharedmem_set(&drawctxt->gpustate,
-		0, 0, _context_size(adreno_dev));
+	kgsl_sharedmem_set(&drawctxt->gpustate, 0, 0,
+		_context_size(adreno_dev));
 
 	tmp_ctx.cmd = tmp_ctx.start
 	    = (unsigned int *)((char *)drawctxt->gpustate.hostptr + CMD_OFFSET);
@@ -1439,8 +1439,8 @@ static int a2xx_drawctxt_create(struct adreno_device *adreno_dev,
 	kgsl_cache_range_op(&drawctxt->gpustate,
 			    KGSL_CACHE_OP_FLUSH);
 
-	kgsl_cffdump_syncmem(NULL,
-			&drawctxt->gpustate, drawctxt->gpustate.gpuaddr,
+	kgsl_cffdump_syncmem(NULL, &drawctxt->gpustate,
+			drawctxt->gpustate.gpuaddr,
 			drawctxt->gpustate.size, false);
 
 done:
@@ -1450,7 +1450,7 @@ done:
 	return ret;
 }
 
-static int a2xx_drawctxt_draw_workaround(struct adreno_device *adreno_dev,
+static void a2xx_drawctxt_draw_workaround(struct adreno_device *adreno_dev,
 					struct adreno_context *context)
 {
 	struct kgsl_device *device = &adreno_dev->dev;
@@ -1467,7 +1467,7 @@ static int a2xx_drawctxt_draw_workaround(struct adreno_device *adreno_dev,
 				ADRENO_NUM_CTX_SWITCH_ALLOWED_BEFORE_DRAW)
 			adreno_dev->gpudev->ctx_switches_since_last_draw = 0;
 		else
-			return 0;
+			return;
 		/*
 		 * Issue an empty draw call to avoid possible hangs due to
 		 * repeated idles without intervening draw calls.
@@ -1498,58 +1498,42 @@ static int a2xx_drawctxt_draw_workaround(struct adreno_device *adreno_dev,
 					| adreno_dev->pix_shader_start;
 	}
 
-	return adreno_ringbuffer_issuecmds(device, context,
-			KGSL_CMD_FLAGS_PMODE, &cmd[0], cmds - cmd);
+	adreno_ringbuffer_issuecmds(device, context, KGSL_CMD_FLAGS_PMODE,
+			&cmd[0], cmds - cmd);
 }
 
-static int a2xx_drawctxt_save(struct adreno_device *adreno_dev,
+static void a2xx_drawctxt_save(struct adreno_device *adreno_dev,
 			struct adreno_context *context)
 {
 	struct kgsl_device *device = &adreno_dev->dev;
-	int ret;
 
 	if (context == NULL || (context->flags & CTXT_FLAGS_BEING_DESTROYED))
-		return 0;
+		return;
 
-	if (context->state == ADRENO_CONTEXT_STATE_INVALID)
-		return 0;
+	if (context->flags & CTXT_FLAGS_GPU_HANG)
+		KGSL_CTXT_WARN(device,
+			"Current active context has caused gpu hang\n");
 
 	if (!(context->flags & CTXT_FLAGS_PREAMBLE)) {
-		kgsl_cffdump_syncmem(NULL, &context->gpustate,
-			context->reg_save[1],
-			context->reg_save[2] << 2, true);
+
 		/* save registers and constants. */
-		ret = adreno_ringbuffer_issuecmds(device, context,
+		adreno_ringbuffer_issuecmds(device, context,
 			KGSL_CMD_FLAGS_NONE,
 			context->reg_save, 3);
 
-		if (ret)
-			return ret;
-
 		if (context->flags & CTXT_FLAGS_SHADER_SAVE) {
-			kgsl_cffdump_syncmem(NULL,
-				&context->gpustate,
-				context->shader_save[1],
-				context->shader_save[2] << 2, true);
 			/* save shader partitioning and instructions. */
-			ret = adreno_ringbuffer_issuecmds(device, context,
+			adreno_ringbuffer_issuecmds(device, context,
 				KGSL_CMD_FLAGS_PMODE,
 				context->shader_save, 3);
 
-			kgsl_cffdump_syncmem(NULL,
-				&context->gpustate,
-				context->shader_fixup[1],
-				context->shader_fixup[2] << 2, true);
 			/*
 			 * fixup shader partitioning parameter for
 			 *  SET_SHADER_BASES.
 			 */
-			ret = adreno_ringbuffer_issuecmds(device, context,
+			adreno_ringbuffer_issuecmds(device, context,
 				KGSL_CMD_FLAGS_NONE,
 				context->shader_fixup, 3);
-
-			if (ret)
-				return ret;
 
 			context->flags |= CTXT_FLAGS_SHADER_RESTORE;
 		}
@@ -1557,142 +1541,95 @@ static int a2xx_drawctxt_save(struct adreno_device *adreno_dev,
 
 	if ((context->flags & CTXT_FLAGS_GMEM_SAVE) &&
 	    (context->flags & CTXT_FLAGS_GMEM_SHADOW)) {
-		kgsl_cffdump_syncmem(NULL, &context->gpustate,
-			context->context_gmem_shadow.gmem_save[1],
-			context->context_gmem_shadow.gmem_save[2] << 2, true);
 		/* save gmem.
 		 * (note: changes shader. shader must already be saved.)
 		 */
-		ret = adreno_ringbuffer_issuecmds(device, context,
+		adreno_ringbuffer_issuecmds(device, context,
 			KGSL_CMD_FLAGS_PMODE,
 			context->context_gmem_shadow.gmem_save, 3);
 
-		if (ret)
-			return ret;
-
-		kgsl_cffdump_syncmem(NULL, &context->gpustate,
-			context->chicken_restore[1],
-			context->chicken_restore[2] << 2, true);
-
 		/* Restore TP0_CHICKEN */
 		if (!(context->flags & CTXT_FLAGS_PREAMBLE)) {
-			ret = adreno_ringbuffer_issuecmds(device, context,
+			adreno_ringbuffer_issuecmds(device, context,
 				KGSL_CMD_FLAGS_NONE,
 				context->chicken_restore, 3);
-
-			if (ret)
-				return ret;
 		}
 		adreno_dev->gpudev->ctx_switches_since_last_draw = 0;
 
 		context->flags |= CTXT_FLAGS_GMEM_RESTORE;
 	} else if (adreno_is_a2xx(adreno_dev))
-		return a2xx_drawctxt_draw_workaround(adreno_dev, context);
-
-	return 0;
+		a2xx_drawctxt_draw_workaround(adreno_dev, context);
 }
 
-static int a2xx_drawctxt_restore(struct adreno_device *adreno_dev,
+static void a2xx_drawctxt_restore(struct adreno_device *adreno_dev,
 			struct adreno_context *context)
 {
 	struct kgsl_device *device = &adreno_dev->dev;
 	unsigned int cmds[5];
-	int ret = 0;
 
 	if (context == NULL) {
-		/* No context - set the default pagetable and thats it */
-		unsigned int id;
-		/*
-		 * If there isn't a current context, the kgsl_mmu_setstate
-		 * will use the CPU path so we don't need to give
-		 * it a valid context id.
-		 */
-		id = (adreno_dev->drawctxt_active != NULL)
-			? adreno_dev->drawctxt_active->base.id
-			: KGSL_CONTEXT_INVALID;
+		/* No context - set the default apgetable and thats it */
 		kgsl_mmu_setstate(&device->mmu, device->mmu.defaultpagetable,
-				  id);
-		return 0;
+				adreno_dev->drawctxt_active->id);
+		return;
 	}
+
+	KGSL_CTXT_INFO(device, "context flags %08x\n", context->flags);
 
 	cmds[0] = cp_nop_packet(1);
 	cmds[1] = KGSL_CONTEXT_TO_MEM_IDENTIFIER;
 	cmds[2] = cp_type3_packet(CP_MEM_WRITE, 2);
 	cmds[3] = device->memstore.gpuaddr +
 		KGSL_MEMSTORE_OFFSET(KGSL_MEMSTORE_GLOBAL, current_context);
-	cmds[4] = context->base.id;
-	ret = adreno_ringbuffer_issuecmds(device, context, KGSL_CMD_FLAGS_NONE,
+	cmds[4] = context->id;
+	adreno_ringbuffer_issuecmds(device, context, KGSL_CMD_FLAGS_NONE,
 					cmds, 5);
-	if (ret)
-		return ret;
+	kgsl_mmu_setstate(&device->mmu, context->pagetable, context->id);
 
-	kgsl_mmu_setstate(&device->mmu, context->base.pagetable,
-			context->base.id);
+#ifndef CONFIG_MSM_KGSL_CFF_DUMP_NO_CONTEXT_MEM_DUMP
+	kgsl_cffdump_syncmem(NULL, &context->gpustate,
+		context->gpustate.gpuaddr, LCC_SHADOW_SIZE +
+		REG_SHADOW_SIZE + CMD_BUFFER_SIZE + TEX_SHADOW_SIZE, false);
+#endif
 
 	/* restore gmem.
 	 *  (note: changes shader. shader must not already be restored.)
 	 */
 	if (context->flags & CTXT_FLAGS_GMEM_RESTORE) {
-		kgsl_cffdump_syncmem(NULL, &context->gpustate,
-			context->context_gmem_shadow.gmem_restore[1],
-			context->context_gmem_shadow.gmem_restore[2] << 2,
-			true);
-
-		ret = adreno_ringbuffer_issuecmds(device, context,
+		adreno_ringbuffer_issuecmds(device, context,
 			KGSL_CMD_FLAGS_PMODE,
 			context->context_gmem_shadow.gmem_restore, 3);
-		if (ret)
-			return ret;
 
 		if (!(context->flags & CTXT_FLAGS_PREAMBLE)) {
-			kgsl_cffdump_syncmem(NULL, &context->gpustate,
-				context->chicken_restore[1],
-				context->chicken_restore[2] << 2, true);
-
 			/* Restore TP0_CHICKEN */
-			ret = adreno_ringbuffer_issuecmds(device, context,
+			adreno_ringbuffer_issuecmds(device, context,
 				KGSL_CMD_FLAGS_NONE,
 				context->chicken_restore, 3);
-			if (ret)
-				return ret;
 		}
 
 		context->flags &= ~CTXT_FLAGS_GMEM_RESTORE;
 	}
 
 	if (!(context->flags & CTXT_FLAGS_PREAMBLE)) {
-		kgsl_cffdump_syncmem(NULL, &context->gpustate,
-			context->reg_restore[1],
-			context->reg_restore[2] << 2, true);
 
 		/* restore registers and constants. */
-		ret = adreno_ringbuffer_issuecmds(device, context,
+		adreno_ringbuffer_issuecmds(device, context,
 			KGSL_CMD_FLAGS_NONE, context->reg_restore, 3);
-		if (ret)
-			return ret;
 
 		/* restore shader instructions & partitioning. */
 		if (context->flags & CTXT_FLAGS_SHADER_RESTORE) {
-			kgsl_cffdump_syncmem(NULL, &context->gpustate,
-				context->shader_restore[1],
-				context->shader_restore[2] << 2, true);
-
-			ret = adreno_ringbuffer_issuecmds(device, context,
+			adreno_ringbuffer_issuecmds(device, context,
 				KGSL_CMD_FLAGS_NONE,
 				context->shader_restore, 3);
-			if (ret)
-				return ret;
 		}
 	}
 
 	if (adreno_is_a20x(adreno_dev)) {
 		cmds[0] = cp_type3_packet(CP_SET_BIN_BASE_OFFSET, 1);
 		cmds[1] = context->bin_base_offset;
-		ret = adreno_ringbuffer_issuecmds(device, context,
+		adreno_ringbuffer_issuecmds(device, context,
 			KGSL_CMD_FLAGS_NONE, cmds, 2);
 	}
-
-	return ret;
 }
 
 /*
@@ -1759,14 +1696,13 @@ static void a2xx_cp_intrcallback(struct kgsl_device *device)
 
 	if (!status) {
 		if (master_status & MASTER_INT_SIGNAL__CP_INT_STAT) {
-			/*
-			 * This indicates that we could not read CP_INT_STAT.
-			 * As a precaution schedule the dispatcher to check
-			 * things out. Since we did not ack any interrupts this
-			 * interrupt will be generated again
-			 */
+			/* This indicates that we could not read CP_INT_STAT.
+			 * As a precaution just wake up processes so
+			 * they can check their timestamps. Since, we
+			 * did not ack any interrupts this interrupt will
+			 * be generated again */
 			KGSL_DRV_WARN(device, "Unable to read CP_INT_STATUS\n");
-			adreno_dispatcher_schedule(device);
+			wake_up_interruptible_all(&device->wait_queue);
 		} else
 			KGSL_DRV_WARN(device, "Spurious interrput detected\n");
 		return;
@@ -1791,8 +1727,9 @@ static void a2xx_cp_intrcallback(struct kgsl_device *device)
 	adreno_regwrite(device, REG_CP_INT_ACK, status);
 
 	if (status & (CP_INT_CNTL__IB1_INT_MASK | CP_INT_CNTL__RB_INT_MASK)) {
+		KGSL_CMD_WARN(rb->device, "ringbuffer ib1/rb interrupt\n");
 		queue_work(device->work_queue, &device->ts_expired_ws);
-		adreno_dispatcher_schedule(device);
+		wake_up_interruptible_all(&device->wait_queue);
 	}
 }
 
@@ -1891,16 +1828,13 @@ static unsigned int a2xx_irq_pending(struct adreno_device *adreno_dev)
 		(mh & kgsl_mmu_get_int_mask())) ? 1 : 0;
 }
 
-static int a2xx_rb_init(struct adreno_device *adreno_dev,
+static void a2xx_rb_init(struct adreno_device *adreno_dev,
 			struct adreno_ringbuffer *rb)
 {
 	unsigned int *cmds, cmds_gpu;
 
 	/* ME_INIT */
 	cmds = adreno_ringbuffer_allocspace(rb, NULL, 19);
-	if (cmds == NULL)
-		return -ENOMEM;
-
 	cmds_gpu = rb->buffer_desc.gpuaddr + sizeof(uint)*(rb->wptr-19);
 
 	GSL_RB_WRITE(cmds, cmds_gpu, cp_type3_packet(CP_ME_INIT, 18));
@@ -1953,8 +1887,6 @@ static int a2xx_rb_init(struct adreno_device *adreno_dev,
 	GSL_RB_WRITE(cmds, cmds_gpu, 0x00000000);
 
 	adreno_ringbuffer_submit(rb);
-
-	return 0;
 }
 
 static unsigned int a2xx_busy_cycles(struct adreno_device *adreno_dev)

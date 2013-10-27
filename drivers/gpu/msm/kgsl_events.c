@@ -90,12 +90,12 @@ static struct kgsl_event *_find_event(struct kgsl_device *device,
 }
 
 /**
- * _signal_event() - send a signal to a specific event in the list
- * @device: Pointer to the KGSL device struct
- * @head: Pointer to the event list to process
- * @timestamp: timestamp of the event to signal
- * @cur: timestamp value to send to the callback
- * @type: Signal ID to send to the callback
+ * _signal_event - send a signal to a specific event in the list
+ * @device - KGSL device
+ * @head - Pointer to the event list to process
+ * @timestamp - timestamp of the event to signal
+ * @cur - timestamp value to send to the callback
+ * @type - Signal ID to send to the callback
  *
  * Send the specified signal to the events in the list with the specified
  * timestamp. The timestamp 'cur' is sent to the callback so it knows
@@ -114,12 +114,12 @@ static void _signal_event(struct kgsl_device *device,
 }
 
 /**
- * _signal_events() - send a signal to all the events in a list
- * @device: Pointer to the KGSL device struct
- * @head: Pointer to the event list to process
- * @timestamp: Timestamp to pass to the events (this should be the current
+ * _signal_events - send a signal to all the events in a list
+ * @device - KGSL device
+ * @head - Pointer to the event list to process
+ * @timestamp - Timestamp to pass to the events (this should be the current
  * timestamp when the signal is sent)
- * @type: Signal ID to send to the callback
+ * @type - Signal ID to send to the callback
  *
  * Send the specified signal to all the events in the list and destroy them
  */
@@ -134,16 +134,6 @@ static void _signal_events(struct kgsl_device *device,
 
 }
 
-/**
- * kgsl_signal_event() - send a signal to a specific event in the context
- * @device: Pointer to the KGSL device struct
- * @context: Pointer to the KGSL context
- * @timestamp: Timestamp of the event to signal
- * @type: Signal ID to send to the callback
- *
- * Send the specified signal to all the events in the context with the given
- * timestamp
- */
 void kgsl_signal_event(struct kgsl_device *device,
 		struct kgsl_context *context, unsigned int timestamp,
 		unsigned int type)
@@ -161,14 +151,6 @@ void kgsl_signal_event(struct kgsl_device *device,
 }
 EXPORT_SYMBOL(kgsl_signal_event);
 
-/**
- * kgsl_signal_events() - send a signal to all events in the context
- * @device: Pointer to the KGSL device struct
- * @context: Pointer to the KGSL context
- * @type: Signal ID to send to the callback function
- *
- * Send the specified signal to all the events in the context
- */
 void kgsl_signal_events(struct kgsl_device *device,
 		struct kgsl_context *context, unsigned int type)
 {
@@ -210,7 +192,6 @@ EXPORT_SYMBOL(kgsl_signal_events);
 int kgsl_add_event(struct kgsl_device *device, u32 id, u32 ts,
 	kgsl_event_func func, void *priv, void *owner)
 {
-	int ret;
 	struct kgsl_event *event;
 	unsigned int cur_ts;
 	struct kgsl_context *context = NULL;
@@ -248,17 +229,6 @@ int kgsl_add_event(struct kgsl_device *device, u32 id, u32 ts,
 		return -ENOMEM;
 	}
 
-	/*
-	 * Increase the active count on the device to avoid going into power
-	 * saving modes while events are pending
-	 */
-	ret = kgsl_active_count_get_light(device);
-	if (ret < 0) {
-		kgsl_context_put(context);
-		kfree(event);
-		return ret;
-	}
-
 	event->context = context;
 	event->timestamp = ts;
 	event->priv = priv;
@@ -285,17 +255,23 @@ int kgsl_add_event(struct kgsl_device *device, u32 id, u32 ts,
 	} else
 		_add_event_to_list(&device->events, event);
 
+	/*
+	 * Increase the active count on the device to avoid going into power
+	 * saving modes while events are pending
+	 */
+
+	device->active_cnt++;
+
 	queue_work(device->work_queue, &device->ts_expired_ws);
 	return 0;
 }
 EXPORT_SYMBOL(kgsl_add_event);
 
 /**
- * kgsl_cancel_events() - Cancel all global events owned by a process
- * @device: Pointer to the KGSL device struct
- * @owner: driver instance that owns the events to cancel
+ * kgsl_cancel_events - Cancel all generic events for a process
+ * @device - KGSL device for the events to cancel
+ * @owner - driver instance that owns the events to cancel
  *
- * Cancel all global events that match the owner pointer
  */
 void kgsl_cancel_events(struct kgsl_device *device, void *owner)
 {
@@ -314,19 +290,6 @@ void kgsl_cancel_events(struct kgsl_device *device, void *owner)
 	}
 }
 EXPORT_SYMBOL(kgsl_cancel_events);
-
-/**
- * kgsl_cancel_event() - send a cancel signal to a specific event
- * @device: Pointer to the KGSL device struct
- * @context: Pointer to the KGSL context
- * @timestamp: Timestamp of the event to cancel
- * @func: Callback function of the event - this is used to match the actual
- * event
- * @priv: Private data for the callback function - this is used to match to the
- * actual event
- *
- * Send the a cancel signal to a specific event that matches all the parameters
- */
 
 void kgsl_cancel_event(struct kgsl_device *device, struct kgsl_context *context,
 		unsigned int timestamp, kgsl_event_func func,
@@ -400,19 +363,10 @@ void kgsl_process_events(struct work_struct *work)
 	struct kgsl_context *context, *tmp;
 	uint32_t timestamp;
 
-	/*
-	 * Bail unless the global timestamp has advanced.  We can safely do this
-	 * outside of the mutex for speed
-	 */
-
-	timestamp = kgsl_readtimestamp(device, NULL, KGSL_TIMESTAMP_RETIRED);
-	if (timestamp == device->events_last_timestamp)
-		return;
-
 	mutex_lock(&device->mutex);
 
-	device->events_last_timestamp = timestamp;
-
+	/* Process expired global events */
+	timestamp = kgsl_readtimestamp(device, NULL, KGSL_TIMESTAMP_RETIRED);
 	_retire_events(device, &device->events, timestamp);
 	_mark_next_event(device, &device->events);
 
@@ -421,18 +375,12 @@ void kgsl_process_events(struct work_struct *work)
 		events_list) {
 
 		/*
-		 * Increment the refcount to make sure that the list_del_init
-		 * is called with a valid context's list
-		 */
-		_kgsl_context_get(context);
-		/*
 		 * If kgsl_timestamp_expired_context returns 0 then it no longer
 		 * has any pending events and can be removed from the list
 		 */
 
 		if (kgsl_process_context_events(device, context) == 0)
 			list_del_init(&context->events_list);
-		kgsl_context_put(context);
 	}
 
 	mutex_unlock(&device->mutex);
