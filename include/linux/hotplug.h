@@ -30,19 +30,14 @@ extern unsigned int get_suspend_frequency(void);
 extern unsigned int get_cores_on_touch(void);
 
 extern unsigned int get_input_boost_freq(void);
-extern unsigned int get_min_sample_time(void);
-extern bool get_dynamic_scaling(void);
-extern unsigned int get_hispeed_freq(void);
+extern void touchboost_func(void);
 
+extern bool gpu_idle;
+extern bool dynamic_scaling;
+extern short idle_counter;
 extern bool is_touching;
 extern u64 freq_boosted_time;
+extern unsigned long time_stamp;
 
 extern unsigned int report_load_at_max_freq(int cpu);
-
-extern bool interactive_selected;
-
-extern struct lge_touch_data *_ts;
-
-extern unsigned long gpu_pref_counter;
-
 #endif

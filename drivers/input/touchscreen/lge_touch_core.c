@@ -34,7 +34,6 @@
 #include <linux/cpufreq.h>
 #include <linux/hotplug.h>
 #include <linux/cpu.h>
-#include <linux/syscalls.h>
 
 #include <linux/input/lge_touch_core.h>
 
@@ -53,7 +52,11 @@ static int is_width_major;
 static int is_width_minor;
 
 /* extern vars */
-struct lge_touch_data *_ts;
+bool is_touching;
+u64 freq_boosted_time;
+unsigned long time_stamp;
+
+void touchboost_func(void);
 
 bool suspended = false;
 
@@ -804,18 +807,15 @@ static void touch_input_report(struct lge_touch_data *ts)
 	input_sync(ts->input_dev);
 }
 
-static struct double_tap_to_wake {
+struct double_tap_to_wake {
 	unsigned long touch_time;
 	unsigned long window_time;
 	unsigned long sample_time_ms;
 	unsigned int touches;
 	struct input_dev *input_device;
-} wake = {
-	.touch_time = 0,
-	.window_time = 0,
-	.sample_time_ms = 100,
-	.touches = 0,
 };
+
+static struct double_tap_to_wake wake;
 
 void wake_up_display(struct input_dev *input_dev)
 {
@@ -823,55 +823,26 @@ void wake_up_display(struct input_dev *input_dev)
 	return;
 }
 
-#define BOOSTPULSE "/sys/devices/system/cpu/cpufreq/interactive/boostpulse"
-
-static struct boost_mako {
-	int boostpulse_fd;
-} boost = {
-	.boostpulse_fd = -1,
-};
-
-static int boostpulse_open(void)
-{
-	if (boost.boostpulse_fd < 0)
-	{
-		boost.boostpulse_fd = sys_open(BOOSTPULSE, O_WRONLY, 0);
-		
-		if (boost.boostpulse_fd < 0)
-		{
-			pr_info("Error opening %s\n", BOOSTPULSE);
-			return -1;		
-		}
-	}
-
-	return boost.boostpulse_fd;
-}
-
 /*
  * Touch work function
  */
-static void touch_work_func(struct work_struct *work)
+static void __cpuinit touch_work_func(struct work_struct *work)
 {
 	struct lge_touch_data *ts =
 			container_of(work, struct lge_touch_data, work);
 	int int_pin = 0;
 	int next_work = 0;
 	int ret;
-	int len;
 
-	if (interactive_selected)
+	if (!is_touching)
 	{
-		if (boostpulse_open() >= 0)
-		{
-			len = sys_write(boost.boostpulse_fd, "1", sizeof(BOOSTPULSE));
-			
-			if (len < 0)
-			{
-				pr_info("Error writing to %s\n", BOOSTPULSE);			
-			}
-		}
+		gpu_idle = false;
+		touchboost_func();
 	}
 
+    is_touching = true;
+	freq_boosted_time = time_stamp = ktime_to_ms(ktime_get());
+    
 	if (suspended && doubletap_to_wake)
 	{
 		if (!(wake.touch_time + 2000 >= ktime_to_ms(ktime_get())))
@@ -1819,6 +1790,11 @@ static int touch_probe(struct i2c_client *client,
 	int ret = 0;
 	int one_sec = 0;
 
+	wake.touch_time = 0;
+	wake.window_time = jiffies;
+	wake.sample_time_ms = 100;
+	wake.touches = 0;
+
 	if (unlikely(touch_debug_mask & DEBUG_TRACE))
 		TOUCH_DEBUG_MSG("\n");
 
@@ -2032,8 +2008,6 @@ static int touch_probe(struct i2c_client *client,
 #ifdef CONFIG_TOUCHSCREEN_CHARGER_NOTIFY
 	touch_psy_init(ts);
 #endif
-
-	_ts = ts;
 
 	return 0;
 
