@@ -32,7 +32,7 @@
 #define DEFAULT_COUNTER 20
 #define BOOST_THRESHOLD 5000
 
-#define DEBUG
+//#define DEBUG
 
 static struct workqueue_struct *wq;
 static struct delayed_work decide_hotplug;
