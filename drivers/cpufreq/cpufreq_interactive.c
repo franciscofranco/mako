@@ -66,6 +66,11 @@ static cpumask_t down_cpumask;
 static spinlock_t down_cpumask_lock;
 static struct mutex set_speed_lock;
 
+/* realtime thread handles frequency scaling */
+static struct task_struct *speedchange_task;
+static cpumask_t speedchange_cpumask;
+static spinlock_t speedchange_cpumask_lock;
+
 #define GPU_STATE 2
 #define ACTIVE_CORES 4
 #define TUNABLES 3
@@ -120,6 +125,8 @@ static int input_boost_freq_duration;
  * hotplug driver
  */
 bool dynamic_scaling = true;
+
+#define CPU_SYNC_FREQ 918000
 
 /*
  * Helper to get the maximum set frequency which takes into consideration if the
@@ -540,6 +547,38 @@ static void cpufreq_interactive_freq_down(struct work_struct *work)
 	}
 }
 
+static int thread_migration_notify(struct notifier_block *nb,
+                                unsigned long target_cpu, void *arg)
+{
+        unsigned long flags;
+        unsigned int boost_freq = CPU_SYNC_FREQ;
+        struct cpufreq_interactive_cpuinfo *target, *source;
+        target = &per_cpu(cpuinfo, target_cpu);
+        source = &per_cpu(cpuinfo, (int)arg);
+        
+        if (!gpu_idle && source->policy->cur > target->policy->cur)
+        {
+                if (source->policy->cur < boost_freq)
+                        boost_freq = source->policy->cur;
+
+                target->target_freq = boost_freq;
+                target->floor_freq = boost_freq;
+                target->floor_validate_time = ktime_to_us(ktime_get());
+
+                spin_lock_irqsave(&speedchange_cpumask_lock, flags);
+                cpumask_set_cpu(target_cpu, &speedchange_cpumask);
+                spin_unlock_irqrestore(&speedchange_cpumask_lock, flags);
+
+                wake_up_process(speedchange_task);
+        }
+
+        return NOTIFY_OK;
+}
+
+static struct notifier_block thread_migration_nb = {
+        .notifier_call = thread_migration_notify,
+};
+
 static ssize_t show_min_sample_time(struct kobject *kobj,
                                     struct attribute *attr, char *buf)
 {
@@ -745,6 +784,9 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
                                     &interactive_attr_group);
             if (rc)
                 return rc;
+                
+            atomic_notifier_chain_register(&migration_notifier_head,
+                                        &thread_migration_nb);
             
             break;
             
@@ -770,6 +812,10 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
             
             sysfs_remove_group(cpufreq_global_kobject,
                                &interactive_attr_group);
+                               
+            atomic_notifier_chain_unregister(
+                                &migration_notifier_head,
+                                &thread_migration_nb);
             
             break;
             
