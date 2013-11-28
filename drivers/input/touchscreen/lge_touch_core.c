@@ -859,16 +859,13 @@ static void touch_work_func(struct work_struct *work)
 	int ret;
 	int len;
 
-	if (interactive_selected)
+	if (boostpulse_open() >= 0)
 	{
-		if (boostpulse_open() >= 0)
-		{
-			len = sys_write(boost.boostpulse_fd, "1", sizeof(BOOSTPULSE));
+		len = sys_write(boost.boostpulse_fd, "1", sizeof(BOOSTPULSE));
 			
-			if (len < 0)
-			{
-				pr_info("Error writing to %s\n", BOOSTPULSE);			
-			}
+		if (len < 0)
+		{
+			pr_info("Error writing to %s\n", BOOSTPULSE);			
 		}
 	}
 
