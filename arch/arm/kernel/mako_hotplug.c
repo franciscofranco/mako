@@ -56,6 +56,13 @@ static struct cpu_stats
 	.ready_to_online = {false},
 };
 
+struct cpu_load_data {
+	u64 prev_cpu_idle;
+	u64 prev_cpu_wall;
+};
+
+static DEFINE_PER_CPU(struct cpu_load_data, cpuload);
+
 static struct workqueue_struct *wq;
 static struct delayed_work decide_hotplug;
 
@@ -69,6 +76,32 @@ static void scale_interactive_tunables(unsigned int above_hispeed_delay,
     scale_min_sample_time(min_sample_time);
 }
 #endif
+
+static inline int get_cpu_load(unsigned int cpu)
+{
+	struct cpu_load_data *pcpu = &per_cpu(cpuload, cpu);
+	struct cpufreq_policy policy;
+	u64 cur_wall_time, cur_idle_time;
+	unsigned int idle_time, wall_time;
+	unsigned int cur_load;
+
+	cpufreq_get_policy(&policy, cpu);
+
+	cur_idle_time = get_cpu_idle_time(cpu, &cur_wall_time, true);
+
+	wall_time = (unsigned int) (cur_wall_time - pcpu->prev_cpu_wall);
+	pcpu->prev_cpu_wall = cur_wall_time;
+
+	idle_time = (unsigned int) (cur_idle_time - pcpu->prev_cpu_idle);
+	pcpu->prev_cpu_idle = cur_idle_time;
+
+	if (unlikely(!wall_time || wall_time < idle_time))
+		return 0;
+
+	cur_load = 100 * (wall_time - idle_time) / wall_time;
+
+	return (cur_load * policy.cur) / policy.max;
+}
 
 static inline void calc_cpu_hotplug(unsigned int counter0,
 									unsigned int counter1)
@@ -117,7 +150,7 @@ static inline void calc_cpu_hotplug(unsigned int counter0,
 	}
 }
 
-static inline void __cpuinit decide_hotplug_func(struct work_struct *work)
+static void __ref decide_hotplug_func(struct work_struct *work)
 {
     int cpu;
 	int i;
@@ -137,7 +170,7 @@ static inline void __cpuinit decide_hotplug_func(struct work_struct *work)
 
     for_each_online_cpu(cpu) 
     {
-        if (report_load_at_max_freq(cpu) >= stats.default_first_level)
+        if (get_cpu_load(cpu) >= stats.default_first_level)
         {
             if (likely(stats.counter[cpu] < HIGH_LOAD_COUNTER))    
                 stats.counter[cpu] += 2;
@@ -159,13 +192,13 @@ re_queue:
     queue_delayed_work(wq, &decide_hotplug, msecs_to_jiffies(TIMER));
 }
 
-static void __cpuinit mako_hotplug_early_suspend(struct early_suspend *handler)
+static void mako_hotplug_early_suspend(struct early_suspend *handler)
 {	 
     int cpu;
 
     /* cancel the hotplug work when the screen is off and flush the WQ */
+	flush_workqueue(wq);
     cancel_delayed_work_sync(&decide_hotplug);
-    flush_workqueue(wq);
 
     pr_info("Early Suspend stopping Hotplug work...\n");
     
@@ -186,7 +219,7 @@ static void __cpuinit mako_hotplug_early_suspend(struct early_suspend *handler)
             0, stats.suspend_frequency/1000);
 }
 
-static void __cpuinit mako_hotplug_late_resume(struct early_suspend *handler)
+static void __ref mako_hotplug_late_resume(struct early_suspend *handler)
 {  
     int cpu;
 
@@ -248,11 +281,11 @@ int __init mako_hotplug_init(void)
 {
 	pr_info("Mako Hotplug driver started.\n");
 
-    wq = alloc_workqueue("mako_hotplug_workqueue", WQ_FREEZABLE, 1);
+    wq = alloc_ordered_workqueue("mako_hotplug_workqueue", 0);
     
     if (!wq)
         return -ENOMEM;
-    
+
     INIT_DELAYED_WORK(&decide_hotplug, decide_hotplug_func);
     queue_delayed_work(wq, &decide_hotplug, HZ*25);
     
