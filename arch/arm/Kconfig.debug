@@ -44,7 +44,7 @@ config ARM_UNWIND
 config OLD_MCOUNT
 	bool
 	depends on FUNCTION_TRACER && FRAME_POINTER
-	default y
+	default n
 
 config DEBUG_USER
 	bool "Verbose user fault messages"
