@@ -92,3 +92,4 @@ mkboot/
 zip/
 aosp.sh
 jss.sh
+doubletap_to_wake_backup.c
