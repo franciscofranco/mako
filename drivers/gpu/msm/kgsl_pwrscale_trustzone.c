@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -82,13 +82,15 @@ module_param(sample_time_ms, long, 0664);
 module_param(up_threshold, int, 0664);
 module_param(down_threshold, int, 0664);
 
-struct clk_scaling_stats {
+static struct clk_scaling_stats {
 	unsigned long total_time_ms;
 	unsigned long busy_time_ms;
-	unsigned long threshold;	
+	unsigned long threshold;
+} gpu_stats = {
+	.total_time_ms = 0,
+	.busy_time_ms = 0,
+	.threshold = 0,
 };
-
-static struct clk_scaling_stats gpu_stats;
 
 static ssize_t tz_governor_show(struct kgsl_device *device,
 				struct kgsl_pwrscale *pwrscale,
@@ -129,8 +131,12 @@ static ssize_t tz_governor_store(struct kgsl_device *device,
 	else if (!strncmp(str, "performance", 11))
 		priv->governor = TZ_GOVERNOR_INTERACTIVE;
 
-	if (priv->governor == TZ_GOVERNOR_PERFORMANCE)
+	if (priv->governor == TZ_GOVERNOR_PERFORMANCE) {
 		kgsl_pwrctrl_pwrlevel_change(device, pwr->max_pwrlevel);
+		pwr->default_pwrlevel = pwr->max_pwrlevel;
+	} else {
+		pwr->default_pwrlevel = pwr->init_pwrlevel;
+	}
 
 	mutex_unlock(&device->mutex);
 	return count;
@@ -220,7 +226,7 @@ static void __cpuinit tz_idle(struct kgsl_device *device, struct kgsl_pwrscale *
 	   the same */
 	if (priv->governor == TZ_GOVERNOR_PERFORMANCE)
 		return;
-		
+
 	device->ftbl->power_stats(device, &stats);
 	priv->bin.total_time += stats.total_time;
 	priv->bin.busy_time += stats.busy_time;
@@ -245,12 +251,14 @@ static void __cpuinit tz_idle(struct kgsl_device *device, struct kgsl_pwrscale *
 	 * notice a few frame drops while this algorithm didn't scale past 128MHz
 	 * on simple operations. This is fixed with up_threshold being scaled
 	 */
-	
-	if (pwr->active_pwrlevel > 1)
-		gpu_stats.threshold = (up_threshold / pwr->active_pwrlevel) + up_differential;
-	else
+
+	if (pwr->active_pwrlevel == pwr->min_pwrlevel)
+		gpu_stats.threshold = up_threshold / pwr->active_pwrlevel;
+	else if (pwr->active_pwrlevel > 0)
 		gpu_stats.threshold = up_threshold - up_differential;
-		
+	else
+		gpu_stats.threshold = up_threshold;
+
 	/*pr_info("---------------------------------");
 	if(gpu_idle){pr_info("GPU IDLE");}
 	else{pr_info("GPU BUSY");}
@@ -266,15 +274,13 @@ static void __cpuinit tz_idle(struct kgsl_device *device, struct kgsl_pwrscale *
 
 	if ((gpu_stats.busy_time_ms * 100) > (gpu_stats.total_time_ms * gpu_stats.threshold))
 	{
-		if ((pwr->active_pwrlevel > 0) &&
-			(pwr->active_pwrlevel <= (pwr->num_pwrlevels - 1)))
+		if (pwr->active_pwrlevel > pwr->max_pwrlevel)
 			kgsl_pwrctrl_pwrlevel_change(device,
 					     pwr->active_pwrlevel - 1);
 	}
 	else if ((gpu_stats.busy_time_ms * 100) < (gpu_stats.total_time_ms * down_threshold))
 	{
-		if ((pwr->active_pwrlevel >= 0) &&
-			(pwr->active_pwrlevel < (pwr->num_pwrlevels - 1)))
+		if (pwr->active_pwrlevel < pwr->max_pwrlevel)
 			kgsl_pwrctrl_pwrlevel_change(device,
 					     pwr->active_pwrlevel + 1);
 	}
@@ -294,6 +300,7 @@ static void tz_sleep(struct kgsl_device *device,
 	struct kgsl_pwrscale *pwrscale)
 {
 	struct tz_priv *priv = pwrscale->priv;
+	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 
 	gpu_idle = true;
 	idle_counter = 10;
@@ -305,7 +312,9 @@ static void tz_sleep(struct kgsl_device *device,
 	 */
 	if ((gpu_stats.busy_time_ms * 100) < 
 			(gpu_stats.total_time_ms * down_threshold))
-		kgsl_pwrctrl_pwrlevel_change(device, 3);
+	{
+		kgsl_pwrctrl_pwrlevel_change(device, pwr->min_pwrlevel);
+	}
 
 	priv->bin.total_time = 0;
 	priv->bin.busy_time = 0;
@@ -317,10 +326,6 @@ static void tz_sleep(struct kgsl_device *device,
 static int tz_init(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 {
 	struct tz_priv *priv;
-
-	gpu_stats.total_time_ms = 0;
-	gpu_stats.busy_time_ms = 0;
-	gpu_stats.threshold = 0;
 
 	priv = pwrscale->priv = kzalloc(sizeof(struct tz_priv), GFP_KERNEL);
 	if (pwrscale->priv == NULL)
