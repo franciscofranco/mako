@@ -64,7 +64,10 @@ struct cpu_load_data {
 static DEFINE_PER_CPU(struct cpu_load_data, cpuload);
 
 static struct workqueue_struct *wq;
+static struct workqueue_struct *pm_wq;
 static struct delayed_work decide_hotplug;
+static struct work_struct resume;
+static struct work_struct suspend;
 
 #if 0
 static void scale_interactive_tunables(unsigned int above_hispeed_delay,
@@ -192,13 +195,14 @@ re_queue:
     queue_delayed_work(wq, &decide_hotplug, msecs_to_jiffies(TIMER));
 }
 
-static void mako_hotplug_early_suspend(struct early_suspend *handler)
-{	 
-    int cpu;
+static void suspend_func(struct work_struct *work)
+{
+	int cpu;
 
     /* cancel the hotplug work when the screen is off and flush the WQ */
 	flush_workqueue(wq);
     cancel_delayed_work_sync(&decide_hotplug);
+	cancel_work_sync(&resume);
 
     pr_info("Early Suspend stopping Hotplug work...\n");
     
@@ -216,12 +220,14 @@ static void mako_hotplug_early_suspend(struct early_suspend *handler)
     msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, 
             stats.suspend_frequency);
     pr_info("Cpulimit: Early suspend - limit cpu%d max frequency to: %dMHz\n",
-            0, stats.suspend_frequency/1000);
+            0, stats.suspend_frequency/1000);	
 }
 
-static void __ref mako_hotplug_late_resume(struct early_suspend *handler)
-{  
-    int cpu;
+static void __ref resume_func(struct work_struct *work)
+{
+	int cpu;
+
+	cancel_work_sync(&suspend);
 
 	/* restore max frequency */
     msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, MSM_CPUFREQ_NO_LIMIT);
@@ -235,7 +241,17 @@ static void __ref mako_hotplug_late_resume(struct early_suspend *handler)
     }
     
     pr_info("Late Resume starting Hotplug work...\n");
-    queue_delayed_work(wq, &decide_hotplug, HZ);
+    queue_delayed_work(wq, &decide_hotplug, HZ);	
+}
+
+static void mako_hotplug_early_suspend(struct early_suspend *handler)
+{	 
+    queue_work(pm_wq, &suspend);
+}
+
+static void mako_hotplug_late_resume(struct early_suspend *handler)
+{  
+	queue_work(pm_wq, &resume);
 }
 
 static struct early_suspend mako_hotplug_suspend =
@@ -286,7 +302,14 @@ int __init mako_hotplug_init(void)
     if (!wq)
         return -ENOMEM;
 
+	pm_wq = alloc_workqueue("pm_workqueue", 0, 1);
+    
+    if (!pm_wq)
+        return -ENOMEM;
+
     INIT_DELAYED_WORK(&decide_hotplug, decide_hotplug_func);
+	INIT_WORK(&resume, resume_func);
+	INIT_WORK(&suspend, suspend_func);
     queue_delayed_work(wq, &decide_hotplug, HZ*25);
     
     register_early_suspend(&mako_hotplug_suspend);
