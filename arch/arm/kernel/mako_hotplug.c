@@ -57,6 +57,7 @@ static struct delayed_work decide_hotplug;
 static struct work_struct resume;
 static struct work_struct suspend;
 
+unsigned int get_cur_max(unsigned int cpu);
 
 static inline int get_cpu_load(unsigned int cpu)
 {
@@ -65,6 +66,7 @@ static inline int get_cpu_load(unsigned int cpu)
 	u64 cur_wall_time, cur_idle_time;
 	unsigned int idle_time, wall_time;
 	unsigned int cur_load;
+	unsigned int cur_max, max_freq, cur_freq;
 
 	cpufreq_get_policy(&policy, cpu);
 	
@@ -79,9 +81,23 @@ static inline int get_cpu_load(unsigned int cpu)
 	if (unlikely(!wall_time || wall_time < idle_time))
 		return 0;
 
+	/* get the correct max frequency and current freqency */
+	cur_max = get_cur_max(policy.cpu);
+
+	if (cur_max >= policy.max)
+	{
+		max_freq = policy.max;
+		cur_freq = policy.cur;
+	}
+	else
+	{
+		max_freq = cur_max;
+		cur_freq = policy.cur > cur_max ? cur_max : policy.cur;
+	}
+
 	cur_load = 100 * (wall_time - idle_time) / wall_time;
 
-	return (cur_load * policy.cur) / policy.max;
+	return (cur_load * cur_freq) / max_freq;
 }
 
 static void __ref online_core(unsigned short cpus_num)
@@ -264,7 +280,7 @@ static void __ref decide_hotplug_func(struct work_struct *work)
 	}
 	
 #ifdef DEBUG
-    if (debug_time_stamp < ktime_to_ms(ktime_get()) - 200)
+    if (debug_time_stamp < ktime_to_ms(ktime_get()) - 100)
     {
 		cpu = 0;
 		pr_info("----HOTPLUG DEBUG INFO----\n");

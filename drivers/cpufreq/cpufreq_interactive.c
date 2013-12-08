@@ -241,7 +241,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	if (load_since_change > cpu_load)
 		cpu_load = load_since_change;
 	
-	/* checking for throttling */
+	/* get the correct max frequency */
 	cur_max = get_cur_max(pcpu->policy->cpu);
 
 	max_freq = cur_max >= pcpu->policy->max ? pcpu->policy->max : cur_max;
