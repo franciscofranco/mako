@@ -355,6 +355,8 @@ static void suspend_func(struct work_struct *work)
 
 static void __ref resume_func(struct work_struct *work)
 {
+	int cpu;
+
 	cancel_work_sync(&suspend);
 
 	/* restore max frequency */
