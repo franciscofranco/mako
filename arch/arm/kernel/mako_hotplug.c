@@ -10,6 +10,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
+ * Simple no bullshit hot[un]plug driver for SMP
  */
 
 #include <linux/kernel.h>
@@ -34,19 +35,56 @@
 
 //#define DEBUG
 
-static struct workqueue_struct *wq;
-static struct delayed_work decide_hotplug;
+struct cpu_load_data {
+	u64 prev_cpu_idle;
+	u64 prev_cpu_wall;
+};
 
-static unsigned int default_first_level;
-static unsigned int default_third_level;
-static unsigned int cores_on_touch;
-static unsigned int suspend_frequency;
+static DEFINE_PER_CPU(struct cpu_load_data, cpuload);
+
+static unsigned int default_first_level = DEFAULT_FIRST_LEVEL;
+static unsigned int default_third_level = DEFAULT_THIRD_LEVEL;
+static unsigned int cores_on_touch = DEFAULT_CORES_ON_TOUCH;
+static unsigned int suspend_frequency = DEFAULT_SUSPEND_FREQ;
 static unsigned long now;
 static bool core_boost[4];
 static short first_counter = 0;
 static short third_counter = 0;
 
-static void __cpuinit online_core(unsigned short cpus_num)
+static struct workqueue_struct *wq;
+static struct workqueue_struct *pm_wq;
+static struct delayed_work decide_hotplug;
+static struct work_struct resume;
+static struct work_struct suspend;
+
+
+static inline int get_cpu_load(unsigned int cpu)
+{
+	struct cpu_load_data *pcpu = &per_cpu(cpuload, cpu);
+	struct cpufreq_policy policy;
+	u64 cur_wall_time, cur_idle_time;
+	unsigned int idle_time, wall_time;
+	unsigned int cur_load;
+
+	cpufreq_get_policy(&policy, cpu);
+
+	cur_idle_time = get_cpu_idle_time(cpu, &cur_wall_time, true);
+
+	wall_time = (unsigned int) (cur_wall_time - pcpu->prev_cpu_wall);
+	pcpu->prev_cpu_wall = cur_wall_time;
+
+	idle_time = (unsigned int) (cur_idle_time - pcpu->prev_cpu_idle);
+	pcpu->prev_cpu_idle = cur_idle_time;
+
+	if (unlikely(!wall_time || wall_time < idle_time))
+		return 0;
+
+	cur_load = 100 * (wall_time - idle_time) / wall_time;
+
+	return (cur_load * policy.cur) / policy.max;
+}
+
+static void online_core(unsigned short cpus_num)
 {
 	unsigned int cpu;
 	
@@ -71,7 +109,7 @@ static void __cpuinit online_core(unsigned short cpus_num)
 	return;
 }
 
-static void __cpuinit offline_core(unsigned int cpu)
+static void offline_core(unsigned int cpu)
 {   
 	if (!cpu)
 		return;
@@ -117,7 +155,7 @@ unsigned int scale_third_level(void)
 		return default_third_level;
 }
 
-void __cpuinit touchboost_func(void)
+void touchboost_func(void)
 {	
 	unsigned int i, core, cpus_num, boost_freq;
 	struct cpufreq_policy policy;
@@ -146,7 +184,7 @@ void __cpuinit touchboost_func(void)
 	}
 }
 
-static void __cpuinit decide_hotplug_func(struct work_struct *work)
+static void __ref decide_hotplug_func(struct work_struct *work)
 {
 	unsigned int cpu, lowest_cpu = 0;
 	unsigned int load, av_load = 0, lowest_cpu_load = 100;
@@ -165,7 +203,7 @@ static void __cpuinit decide_hotplug_func(struct work_struct *work)
 
 	for_each_online_cpu(cpu) 
 	{
-		load = report_load_at_max_freq(cpu);
+		load = get_cpu_load(cpu);
 		
 #ifdef DEBUG
 		load_array[cpu] = load;
@@ -266,20 +304,20 @@ static void __cpuinit decide_hotplug_func(struct work_struct *work)
 	}
 #endif
 
-	
-	queue_delayed_work(wq, &decide_hotplug, msecs_to_jiffies(50));
+    queue_delayed_work(wq, &decide_hotplug, msecs_to_jiffies(50));
 }
 
-static void __cpuinit mako_hotplug_early_suspend(struct early_suspend *handler)
-{	 
-	unsigned int cpu;
+static void suspend_func(struct work_struct *work)
+{
+	int cpu;
 
-	/* cancel the hotplug work when the screen is off and flush the WQ */
-	cancel_delayed_work_sync(&decide_hotplug);
+    /* cancel the hotplug work when the screen is off and flush the WQ */
 	flush_workqueue(wq);
+    cancel_delayed_work_sync(&decide_hotplug);
+	cancel_work_sync(&resume);
 
-	pr_info("Early Suspend stopping Hotplug work...\n");
-	
+    pr_info("Early Suspend stopping Hotplug work...\n");
+    
 	for_each_possible_cpu(cpu) 
 	{
 		if (cpu)
@@ -289,23 +327,27 @@ static void __cpuinit mako_hotplug_early_suspend(struct early_suspend *handler)
 		}
 		
 	}
-	
+
 	is_touching = false;
 	first_counter = 0;
 	third_counter = 0;
-	
+
 	/* cap max frequency to 702MHz by default */
 	msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, 
 			suspend_frequency);
 }
 
-static void __cpuinit mako_hotplug_late_resume(struct early_suspend *handler)
+static void __ref resume_func(struct work_struct *work)
 {
+	int cpu;
+
+	cancel_work_sync(&suspend);
+
 	/* restore max frequency */
-	msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, MSM_CPUFREQ_NO_LIMIT);
+    msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, MSM_CPUFREQ_NO_LIMIT);
+    pr_info("Cpulimit: Late resume - restore cpu%d max frequency.\n", 0);
 
 	/* touchboost */
-	
 	is_touching = true;
     idle_counter = -10;
     gpu_idle = false;
@@ -314,14 +356,24 @@ static void __cpuinit mako_hotplug_late_resume(struct early_suspend *handler)
 	is_touching = true;
 	
 	touchboost_func();
-	
-	pr_info("Late Resume starting Hotplug work...\n");
-	queue_delayed_work(wq, &decide_hotplug, HZ);
+    
+    pr_info("Late Resume starting Hotplug work...\n");
+    queue_delayed_work(wq, &decide_hotplug, HZ);	
+}
+
+static void mako_hotplug_early_suspend(struct early_suspend *handler)
+{	 
+    queue_work(pm_wq, &suspend);
+}
+
+static void mako_hotplug_late_resume(struct early_suspend *handler)
+{  
+	queue_work(pm_wq, &resume);
 }
 
 static struct early_suspend mako_hotplug_suspend =
 {
-	.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1,
+    .level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1,
 	.suspend = mako_hotplug_early_suspend,
 	.resume = mako_hotplug_late_resume,
 };
@@ -378,26 +430,25 @@ bool get_core_boost(unsigned int cpu)
 int __init mako_hotplug_init(void)
 {
 	pr_info("Mako Hotplug driver started.\n");
-	
-	/* init everything here */
-	core_boost[0] = true;
-	time_stamp = 0;
-	default_first_level = DEFAULT_FIRST_LEVEL;
-	default_third_level = DEFAULT_THIRD_LEVEL;
-	suspend_frequency = DEFAULT_SUSPEND_FREQ;
-	cores_on_touch = DEFAULT_CORES_ON_TOUCH;
 
-	wq = alloc_workqueue("mako_hotplug_workqueue", WQ_FREEZABLE, 1);
-	
-	if (!wq)
-		return -ENOMEM;
-	
-	INIT_DELAYED_WORK(&decide_hotplug, decide_hotplug_func);
-	queue_delayed_work(wq, &decide_hotplug, HZ*25);
-	
-	register_early_suspend(&mako_hotplug_suspend);
-	
-	return 0;
+    wq = alloc_ordered_workqueue("mako_hotplug_workqueue", 0);
+    
+    if (!wq)
+        return -ENOMEM;
+
+	pm_wq = alloc_workqueue("pm_workqueue", 0, 1);
+    
+    if (!pm_wq)
+        return -ENOMEM;
+
+    INIT_DELAYED_WORK(&decide_hotplug, decide_hotplug_func);
+	INIT_WORK(&resume, resume_func);
+	INIT_WORK(&suspend, suspend_func);
+    queue_delayed_work(wq, &decide_hotplug, HZ*25);
+    
+    register_early_suspend(&mako_hotplug_suspend);
+    
+    return 0;
 }
 late_initcall(mako_hotplug_init);
 
