@@ -239,12 +239,12 @@ static void __ref decide_hotplug_func(struct work_struct *work)
 	
 	if (gpu_idle)
 	{
-		up_val = 3;
+		up_val = 2;
 		down_val = 3;
 	}
 	else
 	{
-		up_val = 5;
+		up_val = 4;
 		down_val = 2;		
 	}
 	
