@@ -67,8 +67,8 @@ static inline int get_cpu_load(unsigned int cpu)
 	unsigned int cur_load;
 
 	cpufreq_get_policy(&policy, cpu);
-
-	cur_idle_time = get_cpu_idle_time(cpu, &cur_wall_time, true);
+	
+	cur_idle_time = get_cpu_idle_time(cpu, &cur_wall_time, gpu_idle ? 0 : 1);
 
 	wall_time = (unsigned int) (cur_wall_time - pcpu->prev_cpu_wall);
 	pcpu->prev_cpu_wall = cur_wall_time;
@@ -84,7 +84,7 @@ static inline int get_cpu_load(unsigned int cpu)
 	return (cur_load * policy.cur) / policy.max;
 }
 
-static void online_core(unsigned short cpus_num)
+static void __ref online_core(unsigned short cpus_num)
 {
 	unsigned int cpu;
 	
@@ -109,7 +109,7 @@ static void online_core(unsigned short cpus_num)
 	return;
 }
 
-static void offline_core(unsigned int cpu)
+static void __ref offline_core(unsigned int cpu)
 {   
 	if (!cpu)
 		return;
@@ -155,7 +155,7 @@ unsigned int scale_third_level(void)
 		return default_third_level;
 }
 
-void touchboost_func(void)
+void __ref touchboost_func(void)
 {	
 	unsigned int i, core, cpus_num, boost_freq;
 	struct cpufreq_policy policy;

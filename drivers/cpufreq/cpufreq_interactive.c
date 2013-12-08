@@ -147,30 +147,6 @@ struct cpufreq_governor cpufreq_gov_interactive = {
 	.owner = THIS_MODULE,
 };
 
-static inline cputime64_t get_cpu_idle_time_jiffy(unsigned int cpu,
-                                                  cputime64_t *wall)
-{
-  	u64 idle_time;
-  	u64 cur_wall_time;
-  	u64 busy_time;
-    
-  	cur_wall_time = jiffies64_to_cputime64(get_jiffies_64());
-    
-  	busy_time  = kcpustat_cpu(cpu).cpustat[CPUTIME_USER];
-  	busy_time += kcpustat_cpu(cpu).cpustat[CPUTIME_SYSTEM];
-  	busy_time += kcpustat_cpu(cpu).cpustat[CPUTIME_IRQ];
-  	busy_time += kcpustat_cpu(cpu).cpustat[CPUTIME_SOFTIRQ];
-  	busy_time += kcpustat_cpu(cpu).cpustat[CPUTIME_STEAL];
-  	busy_time += kcpustat_cpu(cpu).cpustat[CPUTIME_NICE];
-    
-  	idle_time = cur_wall_time - busy_time;
-    
-  	if (wall)
-    	*wall = jiffies_to_usecs(cur_wall_time);
-    
-  	return jiffies_to_usecs(idle_time);
-}
-
 static inline cputime64_t get_cpu_iowait_time(unsigned int cpu, cputime64_t *wall)
 {
 	u64 iowait_time = get_cpu_iowait_time_us(cpu, wall);
@@ -179,18 +155,6 @@ static inline cputime64_t get_cpu_iowait_time(unsigned int cpu, cputime64_t *wal
 		return 0;
     
 	return iowait_time;
-}
-
-static inline cputime64_t get_cpu_idle_time(unsigned int cpu,
-                                            cputime64_t *wall)
-{
-  	u64 idle_time = get_cpu_idle_time_us(cpu, wall) -
-    get_cpu_iowait_time(cpu, wall);
-    
-  	if (idle_time == -1ULL)
-    	idle_time = get_cpu_idle_time_jiffy(cpu, wall);
-    
-  	return idle_time;
 }
 
 //#define DEBUG
@@ -235,7 +199,8 @@ static void cpufreq_interactive_timer(unsigned long data)
 	 */
 	time_in_idle = pcpu->time_in_idle;
 	idle_exit_time = pcpu->idle_exit_time;
-	now_idle = get_cpu_idle_time(data, &pcpu->timer_run_time);
+	now_idle = get_cpu_idle_time(data, &pcpu->timer_run_time, 
+									gpu_idle ? 0 : 1);
 	smp_wmb();
     
 	/* If we raced with cancelling a timer, skip. */
@@ -380,7 +345,7 @@ rearm:
 		}
         
 		pcpu->time_in_idle = get_cpu_idle_time(
-                                               data, &pcpu->idle_exit_time);
+                           data, &pcpu->idle_exit_time, gpu_idle ? 0 : 1);
 		mod_timer_pinned(&pcpu->cpu_timer,
                          jiffies + usecs_to_jiffies(scale_timer_rate()));
 	}
@@ -419,7 +384,7 @@ static void cpufreq_interactive_idle_start(void)
 		 */
 		if (!pending) {
 			pcpu->time_in_idle = get_cpu_idle_time(
-                                                   smp_processor_id(), &pcpu->idle_exit_time);
+                       smp_processor_id(), &pcpu->idle_exit_time, gpu_idle ? 0 : 1);
 			pcpu->timer_idlecancel = 0;
 			mod_timer_pinned(&pcpu->cpu_timer,
                              jiffies + usecs_to_jiffies(scale_timer_rate()));
@@ -470,7 +435,7 @@ static void cpufreq_interactive_idle_end(void)
 	    pcpu->governor_enabled) {
 		pcpu->time_in_idle =
         get_cpu_idle_time(smp_processor_id(),
-                          &pcpu->idle_exit_time);
+                          &pcpu->idle_exit_time, gpu_idle ? 0 : 1);
 		pcpu->timer_idlecancel = 0;
 		mod_timer_pinned(&pcpu->cpu_timer,
                          jiffies + usecs_to_jiffies(scale_timer_rate()));
@@ -758,7 +723,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
                 pcpu->freq_table = freq_table;
                 pcpu->target_set_time_in_idle =
 				get_cpu_idle_time(j,
-                                  &pcpu->target_set_time);
+                      &pcpu->target_set_time, gpu_idle ? 0 : 1);
                 pcpu->floor_freq = pcpu->target_freq;
                 pcpu->floor_validate_time =
 				pcpu->target_set_time;
