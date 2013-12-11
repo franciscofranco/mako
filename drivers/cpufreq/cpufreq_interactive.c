@@ -126,7 +126,7 @@ static bool io_is_busy = true;
  * The CPU will be boosted to this frequency when the screen is
  * touched. input_boost needs to be enabled.
  */
-#define DEFAULT_INPUT_BOOST_FREQ 1134000
+#define DEFAULT_INPUT_BOOST_FREQ 1242000
 static int input_boost_freq = DEFAULT_INPUT_BOOST_FREQ;
 static struct workqueue_struct *input_wq;
 static struct work_struct input_work;
