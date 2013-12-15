@@ -45,15 +45,13 @@ static struct cpu_stats
     unsigned int suspend_frequency;
     unsigned int cores_on_touch;
     unsigned int counter[2];
-	unsigned long timestamp[2];
-	bool ready_to_online[2];
+	u64 timestamp[2];
 } stats = {
 	.default_first_level = DEFAULT_FIRST_LEVEL,
     .suspend_frequency = DEFAULT_SUSPEND_FREQ,
     .cores_on_touch = DEFAULT_CORES_ON_TOUCH,
     .counter = {0},
 	.timestamp = {0},
-	.ready_to_online = {false},
 };
 
 struct cpu_load_data {
@@ -68,17 +66,6 @@ static struct workqueue_struct *pm_wq;
 static struct delayed_work decide_hotplug;
 static struct work_struct resume;
 static struct work_struct suspend;
-
-#if 0
-static void scale_interactive_tunables(unsigned int above_hispeed_delay,
-    unsigned int timer_rate, 
-    unsigned int min_sample_time)
-{
-    scale_above_hispeed_delay(above_hispeed_delay);
-    scale_timer_rate(timer_rate);
-    scale_min_sample_time(min_sample_time);
-}
-#endif
 
 static inline int get_cpu_load(unsigned int cpu)
 {
@@ -106,50 +93,24 @@ static inline int get_cpu_load(unsigned int cpu)
 	return (cur_load * policy.cur) / policy.max;
 }
 
-static inline void calc_cpu_hotplug(unsigned int counter0,
-									unsigned int counter1)
+static void cpu_revive(unsigned int cpu)
 {
-	int cpu;
-	int i, k;
+	cpu_up(cpu);
+	stats.timestamp[cpu - 2] = jiffies;
+}
 
-	stats.ready_to_online[0] = counter0 >= 10;
-	stats.ready_to_online[1] = counter1 >= 10;
-
-	if (unlikely(gpu_pref_counter >= 60))
+static void cpu_smash(unsigned int cpu)
+{
+	/*
+	 * Let's not unplug this cpu unless its been online for longer than
+	 * 1sec to avoid consecutive ups and downs if the load is varying
+	 * closer to the threshold point.
+	 */
+	if (jiffies + msecs_to_jiffies(MIN_TIME_CPU_ONLINE_MS)
+		> stats.timestamp[cpu - 2])
 	{
-		if (num_online_cpus() < num_possible_cpus())
-		{
-			for_each_possible_cpu(cpu)
-			{
-				if (cpu && cpu_is_offline(cpu))
-					cpu_up(cpu);
-			}
-		}
-
-		return;
-	}
-
-	for (i = 0, k = 2; i < 2; i++, k++)
-	{
-		if (stats.ready_to_online[i])
-		{
-			if (cpu_is_offline(k))
-			{
-				cpu_up(k);
-				stats.timestamp[i] = ktime_to_ms(ktime_get());
-			}
-		}
-		else if (cpu_online(k))
-		{
-			/*
-			 * Let's not unplug this cpu unless its been online for longer than
-			 * 1sec to avoid consecutive ups and downs if the load is varying
-			 * closer to the threshold point.
-			 */
-			if (ktime_to_ms(ktime_get()) + MIN_TIME_CPU_ONLINE_MS
-					> stats.timestamp[i])
-				cpu_down(k);
-		}
+		cpu_down(cpu);
+		stats.counter[cpu - 2] = 0;
 	}
 }
 
@@ -157,6 +118,7 @@ static void __ref decide_hotplug_func(struct work_struct *work)
 {
     int cpu;
 	int i;
+	unsigned int cur_load;
 	
 	if (_ts->ts_data.curr_data[0].state == ABS_PRESS)
 	{
@@ -173,23 +135,29 @@ static void __ref decide_hotplug_func(struct work_struct *work)
 
     for_each_online_cpu(cpu) 
     {
-        if (get_cpu_load(cpu) >= stats.default_first_level)
-        {
-            if (likely(stats.counter[cpu] < HIGH_LOAD_COUNTER))    
-                stats.counter[cpu] += 2;
-        }
+		cur_load = get_cpu_load(cpu);
 
-        else
-        {
-            if (stats.counter[cpu])
-                --stats.counter[cpu];
-        }
+		if (cur_load >= stats.default_first_level)
+		{
+			if (likely(stats.counter[cpu] < HIGH_LOAD_COUNTER))    
+				stats.counter[cpu] += 2;
+
+			if (cpu_is_offline(cpu + 2) && stats.counter[cpu] > 10)
+				cpu_revive(cpu + 2);
+		}
+
+		else
+		{
+			if (stats.counter[cpu])
+				--stats.counter[cpu];
+
+			if (cpu_online(cpu + 2) && stats.counter[cpu] < 10)
+				cpu_smash(cpu + 2);
+		}
 
 		if (cpu)
 			break;
-    }
-
-	calc_cpu_hotplug(stats.counter[0], stats.counter[1]);
+	}
 
 re_queue:	
     queue_delayed_work(wq, &decide_hotplug, msecs_to_jiffies(TIMER));
@@ -241,7 +209,7 @@ static void __ref resume_func(struct work_struct *work)
     }
     
     pr_info("Late Resume starting Hotplug work...\n");
-    queue_delayed_work(wq, &decide_hotplug, HZ);	
+    queue_delayed_work(wq, &decide_hotplug, HZ * 2);	
 }
 
 static void mako_hotplug_early_suspend(struct early_suspend *handler)
