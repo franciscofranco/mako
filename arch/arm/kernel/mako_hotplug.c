@@ -25,7 +25,7 @@
 #include <linux/hotplug.h>
 #include <linux/input/lge_touch_core.h>
 #include <linux/input.h>
- 
+#include <linux/jiffies.h>
 #include <mach/cpufreq.h>
 
 #define DEFAULT_FIRST_LEVEL 60
@@ -34,10 +34,7 @@
 #define HIGH_LOAD_COUNTER 20
 #define TIMER HZ
 
-/*
- * 1000ms = 1 second
- */
-#define MIN_TIME_CPU_ONLINE_MS 1000
+#define MIN_TIME_CPU_ONLINE HZ
 
 static struct cpu_stats
 {
@@ -45,7 +42,7 @@ static struct cpu_stats
     unsigned int suspend_frequency;
     unsigned int cores_on_touch;
     unsigned int counter[2];
-	u64 timestamp[2];
+	unsigned long timestamp[2];
 } stats = {
 	.default_first_level = DEFAULT_FIRST_LEVEL,
     .suspend_frequency = DEFAULT_SUSPEND_FREQ,
@@ -106,18 +103,18 @@ static void cpu_smash(unsigned int cpu)
 	 * 1sec to avoid consecutive ups and downs if the load is varying
 	 * closer to the threshold point.
 	 */
-	if (jiffies + msecs_to_jiffies(MIN_TIME_CPU_ONLINE_MS)
-		> stats.timestamp[cpu - 2])
-	{
-		cpu_down(cpu);
-		stats.counter[cpu - 2] = 0;
-	}
+	if (time_is_after_jiffies(stats.timestamp[cpu - 2] + MIN_TIME_CPU_ONLINE))
+		return;
+
+	cpu_down(cpu);
+	stats.counter[cpu - 2] = 0;
 }
 
 static void __ref decide_hotplug_func(struct work_struct *work)
 {
     int cpu;
 	int i;
+	int cpu_nr = 2;
 	unsigned int cur_load;
 	
 	if (_ts->ts_data.curr_data[0].state == ABS_PRESS)
@@ -142,8 +139,8 @@ static void __ref decide_hotplug_func(struct work_struct *work)
 			if (likely(stats.counter[cpu] < HIGH_LOAD_COUNTER))    
 				stats.counter[cpu] += 2;
 
-			if (cpu_is_offline(cpu + 2) && stats.counter[cpu] > 10)
-				cpu_revive(cpu + 2);
+			if (cpu_is_offline(cpu_nr) && stats.counter[cpu] >= 10)
+				cpu_revive(cpu_nr);
 		}
 
 		else
@@ -151,9 +148,11 @@ static void __ref decide_hotplug_func(struct work_struct *work)
 			if (stats.counter[cpu])
 				--stats.counter[cpu];
 
-			if (cpu_online(cpu + 2) && stats.counter[cpu] < 10)
-				cpu_smash(cpu + 2);
+			if (cpu_online(cpu_nr) && stats.counter[cpu] < 10)
+				cpu_smash(cpu_nr);
 		}
+
+		cpu_nr++;
 
 		if (cpu)
 			break;
@@ -274,6 +273,9 @@ int __init mako_hotplug_init(void)
     
     if (!pm_wq)
         return -ENOMEM;
+
+	stats.timestamp[0] = jiffies;
+	stats.timestamp[1] = jiffies;    
 
     INIT_DELAYED_WORK(&decide_hotplug, decide_hotplug_func);
 	INIT_WORK(&resume, resume_func);
