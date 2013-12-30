@@ -29,7 +29,7 @@
 #include <mach/cpufreq.h>
 
 #define DEFAULT_FIRST_LEVEL 60
-#define DEFAULT_SUSPEND_FREQ 702000
+#define DEFAULT_SUSPEND_FREQ 1512000
 #define DEFAULT_CORES_ON_TOUCH 2
 #define HIGH_LOAD_COUNTER 20
 #define TIMER HZ
@@ -169,7 +169,6 @@ static void suspend_func(struct work_struct *work)
     /* cancel the hotplug work when the screen is off and flush the WQ */
 	flush_workqueue(wq);
     cancel_delayed_work_sync(&decide_hotplug);
-	cancel_work_sync(&resume);
 
     pr_info("Early Suspend stopping Hotplug work...\n");
     
@@ -183,7 +182,7 @@ static void suspend_func(struct work_struct *work)
     stats.counter[0] = 0;
     stats.counter[1] = 0;
 
-    /* cap max frequency to 702MHz by default */
+    /* cap max frequency to 1512MHz by default */
     msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, 
             stats.suspend_frequency);
     pr_info("Cpulimit: Early suspend - limit cpu%d max frequency to: %dMHz\n",
@@ -193,8 +192,6 @@ static void suspend_func(struct work_struct *work)
 static void __ref resume_func(struct work_struct *work)
 {
 	int cpu;
-
-	cancel_work_sync(&suspend);
 
 	/* restore max frequency */
     msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, MSM_CPUFREQ_NO_LIMIT);
@@ -213,12 +210,12 @@ static void __ref resume_func(struct work_struct *work)
 
 static void mako_hotplug_early_suspend(struct early_suspend *handler)
 {	 
-    queue_work(pm_wq, &suspend);
+    queue_work_on(0, pm_wq, &suspend);
 }
 
 static void mako_hotplug_late_resume(struct early_suspend *handler)
 {  
-	queue_work(pm_wq, &resume);
+	queue_work_on(0, pm_wq, &resume);
 }
 
 static struct early_suspend mako_hotplug_suspend =
