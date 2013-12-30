@@ -157,7 +157,7 @@ static unsigned int history[HISTORY_SIZE] = {0};
 static unsigned int full_load = 0;
 static unsigned short load_counter = 0;
 
-static void __cpuinit tz_idle(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
+static void __ref tz_idle(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 {
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 	struct tz_priv *priv = pwrscale->priv;
