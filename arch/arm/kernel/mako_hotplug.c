@@ -35,6 +35,26 @@
 
 //#define DEBUG
 
+#define GPU_STATE 2
+#define ACTIVE_CORES 4
+#define TUNABLES 2
+
+/* DEFAULT_THIRD_LEVEL, DEFAULT_FIRST_LEVEL */
+static unsigned int hotplug_val[GPU_STATE][ACTIVE_CORES][TUNABLES] =
+{{	
+	/* gpu idle */
+	{0, 70},
+	{40, 80},
+	{50, 90},
+	{60, 100} 
+	},{
+	/* gpu busy */
+	{0, 60},
+	{30, 60},
+	{30, 70},
+	{40, 100} 
+}};
+
 struct cpu_load_data {
 	u64 prev_cpu_idle;
 	u64 prev_cpu_wall;
@@ -139,36 +159,20 @@ static void __ref offline_core(unsigned int cpu)
 	return;
 }
 
-unsigned int scale_first_level(void)
+unsigned int scale_first_level(unsigned int online_cpus)
 {
 	if (!dynamic_scaling)
 		return default_first_level;
 		
-	if (gpu_idle)
-	{
-		if (default_first_level + 20 <= 90)
-			return default_first_level + 20;
-		else
-			return 90;
-	}
-	else
-		return default_first_level;
+	return hotplug_val[(gpu_idle)?0:1][online_cpus-1][1];
 }
 
-unsigned int scale_third_level(void)
+unsigned int scale_third_level(unsigned int online_cpus)
 {
 	if (!dynamic_scaling)
 		return default_third_level;
 		
-	if (gpu_idle)
-	{
-		if (default_third_level + 20 <= 60)
-			return default_third_level + 20;
-		else
-			return 60;
-	}
-	else
-		return default_third_level;
+	return hotplug_val[(gpu_idle)?0:1][online_cpus-1][0];
 }
 
 void __ref touchboost_func(void)
@@ -248,7 +252,7 @@ static void __ref decide_hotplug_func(struct work_struct *work)
 		down_val = 2;		
 	}
 	
-	if (av_load >= scale_first_level())
+	if (av_load >= scale_first_level(online_cpus))
 	{
 		if (first_counter < DEFAULT_COUNTER)
 			first_counter += up_val;
@@ -259,7 +263,7 @@ static void __ref decide_hotplug_func(struct work_struct *work)
 		if (first_counter >= DEFAULT_COUNTER)
 			online_core(online_cpus);	
 	}
-	else if (av_load <= scale_third_level())
+	else if (av_load <= scale_third_level(online_cpus))
 	{
 		if (third_counter < DEFAULT_COUNTER)
 			third_counter += down_val;
@@ -280,11 +284,11 @@ static void __ref decide_hotplug_func(struct work_struct *work)
 	}
 	
 #ifdef DEBUG
-    if (debug_time_stamp < ktime_to_ms(ktime_get()) - 100)
+    if (debug_time_stamp < ktime_to_ms(ktime_get()) - 80)
     {
 		cpu = 0;
 		pr_info("----HOTPLUG DEBUG INFO----\n");
-		pr_info("Cores on:\t%d", num_online_cpus());
+		pr_info("Cores on:\t%d", online_cpus);
 		pr_info("Core0:\t%d", load_array[0]);
 		pr_info("Core1:\t%d", load_array[1]);
 		pr_info("Core2:\t%d", load_array[2]);
@@ -313,8 +317,8 @@ static void __ref decide_hotplug_func(struct work_struct *work)
 			else
 				pr_info("cpu%d:\toff",cpu_debug);
 		}
-		pr_info("First level: %d", scale_first_level());
-		pr_info("Third level: %d", scale_third_level());
+		pr_info("First level: %d", scale_first_level(online_cpus));
+		pr_info("Third level: %d", scale_third_level(online_cpus));
 		pr_info("-----------------------------------------");
 		debug_time_stamp = now;
 	}
