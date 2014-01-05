@@ -33,6 +33,7 @@
 #define DEFAULT_CORES_ON_TOUCH 2
 #define HIGH_LOAD_COUNTER 20
 #define TIMER HZ
+#define CPUFREQ_UNPLUG_LIMIT 960000
 
 #define MIN_TIME_CPU_ONLINE HZ
 
@@ -149,7 +150,17 @@ static void __ref decide_hotplug_func(struct work_struct *work)
 				--stats.counter[cpu];
 
 			if (cpu_online(cpu_nr) && stats.counter[cpu] < 10)
-				cpu_smash(cpu_nr);
+			{
+				/* 
+				 * offline the cpu only if its freq is lower than
+				 * CPUFREQ_UNPLUG_LIMIT. Else fill the counter so that this cpu
+				 * stays online at least for an 500ms
+				 */
+				if (cpufreq_get(cpu_nr) >= CPUFREQ_UNPLUG_LIMIT)
+					stats.counter[cpu] = 15;
+				else
+					cpu_smash(cpu_nr);
+			}
 		}
 
 		cpu_nr++;
@@ -266,7 +277,7 @@ int __init mako_hotplug_init(void)
     if (!wq)
         return -ENOMEM;
 
-	pm_wq = alloc_workqueue("pm_workqueue", 0, 1);
+	pm_wq = alloc_workqueue("pm_workqueue", WQ_HIGHPRI, 1);
     
     if (!pm_wq)
         return -ENOMEM;
