@@ -93,6 +93,12 @@ static void do_input_boost(struct work_struct *work)
 	unsigned int i, ret;
 	struct cpufreq_policy policy;
 
+	/* 
+	 * to avoid concurrency issues we cancel rem_input_boost
+	 * and wait for it to finish the work
+	 */
+	cancel_delayed_work_sync(&rem_input_boost);
+
 	boost_freq_buf = input_boost_freq;
 
 	for_each_online_cpu(i)
@@ -193,7 +199,7 @@ static int init(void)
 {
 	cpufreq_register_notifier(&boost_adjust_nb, CPUFREQ_POLICY_NOTIFIER);
 
-	input_boost_wq = alloc_workqueue("input_boost_wq", WQ_FREEZABLE | WQ_HIGHPRI, 0);
+	input_boost_wq = alloc_workqueue("input_boost_wq", WQ_FREEZABLE | WQ_HIGHPRI, 1);
 
 	if (!input_boost_wq)
 		return -EFAULT;
