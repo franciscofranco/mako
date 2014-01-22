@@ -11,8 +11,6 @@
 #include <linux/miscdevice.h>
 #include <linux/hotplug.h>
 
-#define MAKO_HOTPLUG_CONTROL_VERSION 2
-
 /*
  * Sysfs get/set entries
  */
@@ -36,60 +34,11 @@ static ssize_t first_level_store(struct device *dev, struct device_attribute *at
     return size;
 }
 
-static ssize_t suspend_frequency_show(struct device *dev, struct device_attribute *attr, char *buf)
-{
-    return sprintf(buf, "%u\n", get_suspend_frequency());
-}
-
-static ssize_t suspend_frequency_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t size)
-{
-    unsigned int new_val;
-    
-	sscanf(buf, "%u", &new_val);
-    
-    if (new_val != get_suspend_frequency() && new_val >= 0 && new_val <= 1512000)
-    {
-        update_suspend_frequency(new_val);
-    }
-    
-    return size;
-}
-
-static ssize_t cores_on_touch_show(struct device *dev, struct device_attribute *attr, char *buf)
-{
-    return sprintf(buf, "%u\n", get_cores_on_touch());
-}
-
-static ssize_t cores_on_touch_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t size)
-{
-    unsigned int new_val;
-    
-    sscanf(buf, "%u", &new_val);
-    
-    if (new_val != get_cores_on_touch() && new_val >= 2 && new_val <= 4)
-    {
-        update_cores_on_touch(new_val);
-    }
-    
-    return size;
-}
-
-static ssize_t mako_hotplug_control_version(struct device *dev, struct device_attribute* attr, char *buf)
-{
-    return sprintf(buf, "%d\n", MAKO_HOTPLUG_CONTROL_VERSION);
-}
-
-static DEVICE_ATTR(first_level, 0777, first_level_show, first_level_store);
-static DEVICE_ATTR(suspend_frequency, 0777, suspend_frequency_show, suspend_frequency_store);
-static DEVICE_ATTR(cores_on_touch, 0777, cores_on_touch_show, cores_on_touch_store);
-static DEVICE_ATTR(version, 0777 , mako_hotplug_control_version, NULL);
+static DEVICE_ATTR(first_level, 0664, first_level_show, first_level_store);
 
 static struct attribute *mako_hotplug_control_attributes[] =
 {
 	&dev_attr_first_level.attr,
-    &dev_attr_suspend_frequency.attr,
-    &dev_attr_cores_on_touch.attr,
-	&dev_attr_version.attr,
 	NULL
 };
 
