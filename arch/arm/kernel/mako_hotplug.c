@@ -32,20 +32,27 @@
 #define MAKO_HOTPLUG "mako_hotplug"
 
 #define DEFAULT_FIRST_LEVEL 60
-#define HIGH_LOAD_COUNTER 20
-#define CPUFREQ_UNPLUG_LIMIT 1000000
-#define MIN_TIME_CPU_ONLINE HZ
-#define TIMER HZ
+#define DEFAULT_HIGH_LOAD_COUNTER 20
+#define DEFAULT_CPUFREQ_UNPLUG_LIMIT 1000000
+#define DEFAULT_MIN_TIME_CPU_ONLINE HZ
+#define DEFAULT_TIMER HZ
 
 static struct cpu_stats
 {
-    unsigned int default_first_level;
     unsigned int counter[2];
 	unsigned long timestamp[2];
 } stats = {
-	.default_first_level = DEFAULT_FIRST_LEVEL,
     .counter = {0},
 };
+
+struct hotplug_tunables
+{
+	unsigned int default_first_level;
+	unsigned int high_load_counter;
+	unsigned int cpufreq_unplug_limit;
+	unsigned int min_time_cpu_online;
+	unsigned int timer;
+} tunables;
 
 struct cpu_load_data {
 	u64 prev_cpu_idle;
@@ -93,12 +100,14 @@ static void cpu_revive(unsigned int cpu)
 
 static void cpu_smash(unsigned int cpu)
 {
+	struct hotplug_tunables *t = &tunables;
+
 	/*
 	 * Let's not unplug this cpu unless its been online for longer than
 	 * 1sec to avoid consecutive ups and downs if the load is varying
 	 * closer to the threshold point.
 	 */
-	if (time_is_after_jiffies(stats.timestamp[cpu - 2] + MIN_TIME_CPU_ONLINE))
+	if (time_is_after_jiffies(stats.timestamp[cpu - 2] + t->min_time_cpu_online))
 		return;
 
 	cpu_down(cpu);
@@ -112,6 +121,7 @@ static void __ref decide_hotplug_func(struct work_struct *work)
 	unsigned int cur_load;
 	unsigned int freq_buf;
 	struct cpufreq_policy policy;
+	struct hotplug_tunables *t = &tunables;
 
 	if (unlikely(num_online_cpus() == 1))
 		goto reschedule;
@@ -120,9 +130,9 @@ static void __ref decide_hotplug_func(struct work_struct *work)
     {
 		cur_load = get_cpu_load(cpu);
 
-		if (cur_load >= stats.default_first_level)
+		if (cur_load >= t->default_first_level)
 		{
-			if (likely(stats.counter[cpu] < HIGH_LOAD_COUNTER))    
+			if (likely(stats.counter[cpu] < t->high_load_counter))
 				stats.counter[cpu] += 2;
 
 			if (cpu_is_offline(cpu_nr) && stats.counter[cpu] >= 10)
@@ -143,10 +153,10 @@ static void __ref decide_hotplug_func(struct work_struct *work)
 				 */
 				cpufreq_get_policy(&policy, cpu_nr);
 
-				if (policy.min > CPUFREQ_UNPLUG_LIMIT)
-					freq_buf = policy.min;
-				else
-					freq_buf = CPUFREQ_UNPLUG_LIMIT;
+				freq_buf = policy.min;
+
+				if (policy.min > t->cpufreq_unplug_limit)
+					freq_buf = t->cpufreq_unplug_limit;
 
 				if (policy.cur > freq_buf)
 					stats.counter[cpu] = 15;
@@ -162,7 +172,7 @@ static void __ref decide_hotplug_func(struct work_struct *work)
 	}
 
 reschedule:
-    queue_delayed_work_on(0, wq, &decide_hotplug, msecs_to_jiffies(TIMER));
+    queue_delayed_work_on(0, wq, &decide_hotplug, msecs_to_jiffies(t->timer));
 }
 
 static void mako_hotplug_suspend(struct work_struct *work)
@@ -216,18 +226,23 @@ static struct early_suspend early_suspend =
 /* sysfs functions for external driver */
 void update_first_level(unsigned int level)
 {
-    stats.default_first_level = level;
+	struct hotplug_tunables *t = &tunables;
+
+    t->default_first_level = level;
 }
 
 unsigned int get_first_level()
 {
-    return stats.default_first_level;
+	struct hotplug_tunables *t = &tunables;
+
+    return t->default_first_level;
 }
 /* end sysfs functions from external driver */
 
 static int __devinit mako_hotplug_probe(struct platform_device *pdev)
 {
 	int ret = 0;
+	struct hotplug_tunables *t = &tunables;
 
     wq = alloc_workqueue("mako_hotplug_workqueue", WQ_HIGHPRI | WQ_FREEZABLE, 0);
     
@@ -236,6 +251,12 @@ static int __devinit mako_hotplug_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto err;
 	}
+
+	t->default_first_level = DEFAULT_FIRST_LEVEL;
+	t->high_load_counter = DEFAULT_HIGH_LOAD_COUNTER;
+	t->cpufreq_unplug_limit = DEFAULT_CPUFREQ_UNPLUG_LIMIT;
+	t->min_time_cpu_online = DEFAULT_MIN_TIME_CPU_ONLINE;
+	t->timer = DEFAULT_TIMER;
 
 	stats.timestamp[0] = jiffies;
 	stats.timestamp[1] = jiffies;
