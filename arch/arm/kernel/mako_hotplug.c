@@ -47,7 +47,7 @@ static struct cpu_stats
 
 struct hotplug_tunables
 {
-	unsigned int default_first_level;
+	unsigned int load_threshold;
 	unsigned int high_load_counter;
 	unsigned int cpufreq_unplug_limit;
 	unsigned int min_time_cpu_online;
@@ -130,7 +130,7 @@ static void __ref decide_hotplug_func(struct work_struct *work)
     {
 		cur_load = get_cpu_load(cpu);
 
-		if (cur_load >= t->default_first_level)
+		if (cur_load >= t->load_threshold)
 		{
 			if (likely(stats.counter[cpu] < t->high_load_counter))
 				stats.counter[cpu] += 2;
@@ -228,14 +228,14 @@ void update_first_level(unsigned int level)
 {
 	struct hotplug_tunables *t = &tunables;
 
-    t->default_first_level = level;
+    t->load_threshold = level;
 }
 
 unsigned int get_first_level()
 {
 	struct hotplug_tunables *t = &tunables;
 
-    return t->default_first_level;
+    return t->load_threshold;
 }
 /* end sysfs functions from external driver */
 
@@ -252,7 +252,7 @@ static int __devinit mako_hotplug_probe(struct platform_device *pdev)
 		goto err;
 	}
 
-	t->default_first_level = DEFAULT_FIRST_LEVEL;
+	t->load_threshold = DEFAULT_FIRST_LEVEL;
 	t->high_load_counter = DEFAULT_HIGH_LOAD_COUNTER;
 	t->cpufreq_unplug_limit = DEFAULT_CPUFREQ_UNPLUG_LIMIT;
 	t->min_time_cpu_online = DEFAULT_MIN_TIME_CPU_ONLINE;
