@@ -33,7 +33,7 @@ static struct cpus {
 	struct cpufreq_policy policy;
 } cpu_stats = {
 	.throttling = false,
-	.thermal_steps = {702000, 1134000, 1242000, 1350000},
+	.thermal_steps = {729600, 918000, 1026000, 1242000},
 	.limited_max_freq = UINT_MAX,
 };
 
@@ -58,9 +58,11 @@ static int  msm_thermal_cpufreq_callback(struct notifier_block *nfb,
 	if (event != CPUFREQ_ADJUST)
 		return 0;
 
-	if (policy->max != cpu_stats.limited_max_freq)
-		cpufreq_verify_within_limits(policy, 0,
-				cpu_stats.limited_max_freq);
+	if (policy->max == cpu_stats.limited_max_freq)
+		return 0;
+		
+	cpufreq_verify_within_limits(policy, cpu_stats.policy.cpuinfo.min_freq,
+		cpu_stats.limited_max_freq);
 
 	return 0;
 }
@@ -93,16 +95,18 @@ static void check_temp(struct work_struct *work)
 {
 	struct tsens_device tsens_dev;
 	long temp = 0;
+	uint32_t freq;
     
 	tsens_dev.sensor_num = msm_thermal_info.sensor_id;
 	tsens_get_temp(&tsens_dev, &temp);
+
+	cpufreq_get_policy(&cpu_stats.policy, 0);
 
 	/* most of the time the device is not hot so reschedule early */
 	if (likely(temp < temp_threshold))
 	{
 		if (unlikely(cpu_stats.throttling))
 		{
-			cpufreq_get_policy(&cpu_stats.policy, 0);
 			limit_cpu_freqs(cpu_stats.policy.cpuinfo.max_freq);
 			cpu_stats.throttling = false;
 		}
@@ -110,22 +114,21 @@ static void check_temp(struct work_struct *work)
 		goto reschedule;
 	}
 
-	if (temp >= (temp_threshold + 20))
-		limit_cpu_freqs(cpu_stats.thermal_steps[0]);
+	if (temp >= (temp_threshold + 12))
+		freq = cpu_stats.thermal_steps[0];
+	else if (temp >= (temp_threshold + 9))
+		freq = cpu_stats.thermal_steps[1];
+	else if (temp >= (temp_threshold + 5))
+		freq = cpu_stats.thermal_steps[2];
+	else
+		freq = cpu_stats.thermal_steps[3];
 
-	else if (temp >= (temp_threshold + 15))
-		limit_cpu_freqs(cpu_stats.thermal_steps[1]);
-    
-	else if (temp >= (temp_threshold + 10))
-		limit_cpu_freqs(cpu_stats.thermal_steps[2]);
-
-	else if (temp >= temp_threshold)
-		limit_cpu_freqs(cpu_stats.thermal_steps[3]);
+	limit_cpu_freqs(freq);
 
 	cpu_stats.throttling = true;
 
 reschedule:
-	queue_delayed_work(wq, &check_temp_work, HZ);
+	queue_delayed_work(wq, &check_temp_work, msecs_to_jiffies(250));
 }
 
 int __devinit msm_thermal_init(struct msm_thermal_data *pdata)
