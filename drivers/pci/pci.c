@@ -673,15 +673,11 @@ static int pci_platform_power_transition(struct pci_dev *dev, pci_power_t state)
 		error = platform_pci_set_power_state(dev, state);
 		if (!error)
 			pci_update_current_state(dev, state);
-		/* Fall back to PCI_D0 if native PM is not supported */
-		if (!dev->pm_cap)
-			dev->current_state = PCI_D0;
-	} else {
+	} else
 		error = -ENODEV;
-		/* Fall back to PCI_D0 if native PM is not supported */
-		if (!dev->pm_cap)
-			dev->current_state = PCI_D0;
-	}
+
+	if (error && !dev->pm_cap) /* Fall back to PCI_D0 */
+		dev->current_state = PCI_D0;
 
 	return error;
 }
@@ -1988,10 +1984,6 @@ void pci_enable_ari(struct pci_dev *dev)
 	if (pcie_ari_disabled || !pci_is_pcie(dev) || dev->devfn)
 		return;
 
-	pos = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_ARI);
-	if (!pos)
-		return;
-
 	bridge = dev->bus->self;
 	if (!bridge || !pci_is_pcie(bridge))
 		return;
@@ -2010,10 +2002,14 @@ void pci_enable_ari(struct pci_dev *dev)
 		return;
 
 	pci_read_config_word(bridge, pos + PCI_EXP_DEVCTL2, &ctrl);
-	ctrl |= PCI_EXP_DEVCTL2_ARI;
+	if (pci_find_ext_capability(dev, PCI_EXT_CAP_ID_ARI)) {
+		ctrl |= PCI_EXP_DEVCTL2_ARI;
+		bridge->ari_enabled = 1;
+	} else {
+		ctrl &= ~PCI_EXP_DEVCTL2_ARI;
+		bridge->ari_enabled = 0;
+	}
 	pci_write_config_word(bridge, pos + PCI_EXP_DEVCTL2, ctrl);
-
-	bridge->ari_enabled = 1;
 }
 
 /**

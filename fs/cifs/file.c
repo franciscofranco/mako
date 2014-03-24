@@ -1539,10 +1539,11 @@ struct cifsFileInfo *find_readable_file(struct cifsInodeInfo *cifs_inode,
 struct cifsFileInfo *find_writable_file(struct cifsInodeInfo *cifs_inode,
 					bool fsuid_only)
 {
-	struct cifsFileInfo *open_file;
+	struct cifsFileInfo *open_file, *inv_file = NULL;
 	struct cifs_sb_info *cifs_sb;
 	bool any_available = false;
 	int rc;
+	unsigned int refind = 0;
 
 	/* Having a null inode here (because mapping->host was set to zero by
 	the VFS or MM) should not happen but we had reports of on oops (due to
@@ -1562,40 +1563,25 @@ struct cifsFileInfo *find_writable_file(struct cifsInodeInfo *cifs_inode,
 
 	spin_lock(&cifs_file_list_lock);
 refind_writable:
+	if (refind > MAX_REOPEN_ATT) {
+		spin_unlock(&cifs_file_list_lock);
+		return NULL;
+	}
 	list_for_each_entry(open_file, &cifs_inode->openFileList, flist) {
 		if (!any_available && open_file->pid != current->tgid)
 			continue;
 		if (fsuid_only && open_file->uid != current_fsuid())
 			continue;
 		if (OPEN_FMODE(open_file->f_flags) & FMODE_WRITE) {
-			cifsFileInfo_get(open_file);
-
 			if (!open_file->invalidHandle) {
 				/* found a good writable file */
+				cifsFileInfo_get(open_file);
 				spin_unlock(&cifs_file_list_lock);
 				return open_file;
+			} else {
+				if (!inv_file)
+					inv_file = open_file;
 			}
-
-			spin_unlock(&cifs_file_list_lock);
-
-			/* Had to unlock since following call can block */
-			rc = cifs_reopen_file(open_file, false);
-			if (!rc)
-				return open_file;
-
-			/* if it fails, try another handle if possible */
-			cFYI(1, "wp failed on reopen file");
-			cifsFileInfo_put(open_file);
-
-			spin_lock(&cifs_file_list_lock);
-
-			/* else we simply continue to the next entry. Thus
-			   we do not loop on reopen errors.  If we
-			   can not reopen the file, for example if we
-			   reconnected to a server with another client
-			   racing to delete or lock the file we would not
-			   make progress if we restarted before the beginning
-			   of the loop here. */
 		}
 	}
 	/* couldn't find useable FH with same pid, try any available */
@@ -1603,7 +1589,30 @@ refind_writable:
 		any_available = true;
 		goto refind_writable;
 	}
+
+	if (inv_file) {
+		any_available = false;
+		cifsFileInfo_get(inv_file);
+	}
+
 	spin_unlock(&cifs_file_list_lock);
+
+	if (inv_file) {
+		rc = cifs_reopen_file(inv_file, false);
+		if (!rc)
+			return inv_file;
+		else {
+			spin_lock(&cifs_file_list_lock);
+			list_move_tail(&inv_file->flist,
+					&cifs_inode->openFileList);
+			spin_unlock(&cifs_file_list_lock);
+			cifsFileInfo_put(inv_file);
+			spin_lock(&cifs_file_list_lock);
+			++refind;
+			goto refind_writable;
+		}
+	}
+
 	return NULL;
 }
 
@@ -2176,7 +2185,7 @@ cifs_iovec_write(struct file *file, const struct iovec *iov,
 		 unsigned long nr_segs, loff_t *poffset)
 {
 	unsigned long nr_pages, i;
-	size_t copied, len, cur_len;
+	size_t bytes, copied, len, cur_len;
 	ssize_t total_written = 0;
 	loff_t offset;
 	struct iov_iter it;
@@ -2227,13 +2236,44 @@ cifs_iovec_write(struct file *file, const struct iovec *iov,
 
 		save_len = cur_len;
 		for (i = 0; i < nr_pages; i++) {
-			copied = min_t(const size_t, cur_len, PAGE_SIZE);
+			bytes = min_t(const size_t, cur_len, PAGE_SIZE);
 			copied = iov_iter_copy_from_user(wdata->pages[i], &it,
-							 0, copied);
+							 0, bytes);
 			cur_len -= copied;
 			iov_iter_advance(&it, copied);
+			/*
+			 * If we didn't copy as much as we expected, then that
+			 * may mean we trod into an unmapped area. Stop copying
+			 * at that point. On the next pass through the big
+			 * loop, we'll likely end up getting a zero-length
+			 * write and bailing out of it.
+			 */
+			if (copied < bytes)
+				break;
 		}
 		cur_len = save_len - cur_len;
+
+		/*
+		 * If we have no data to send, then that probably means that
+		 * the copy above failed altogether. That's most likely because
+		 * the address in the iovec was bogus. Set the rc to -EFAULT,
+		 * free anything we allocated and bail out.
+		 */
+		if (!cur_len) {
+			for (i = 0; i < nr_pages; i++)
+				put_page(wdata->pages[i]);
+			kfree(wdata);
+			rc = -EFAULT;
+			break;
+		}
+
+		/*
+		 * i + 1 now represents the number of pages we actually used in
+		 * the copy phase above. Bring nr_pages down to that, and free
+		 * any pages that we didn't use.
+		 */
+		for ( ; nr_pages > i + 1; nr_pages--)
+			put_page(wdata->pages[nr_pages - 1]);
 
 		wdata->sync_mode = WB_SYNC_ALL;
 		wdata->nr_pages = nr_pages;

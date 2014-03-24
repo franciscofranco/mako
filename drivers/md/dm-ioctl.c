@@ -1066,6 +1066,7 @@ static void retrieve_status(struct dm_table *table,
 	num_targets = dm_table_get_num_targets(table);
 	for (i = 0; i < num_targets; i++) {
 		struct dm_target *ti = dm_table_get_target(table, i);
+		size_t l;
 
 		remaining = len - (outptr - outbuf);
 		if (remaining <= sizeof(struct dm_target_spec)) {
@@ -1089,15 +1090,18 @@ static void retrieve_status(struct dm_table *table,
 		}
 
 		/* Get the status/table string from the target driver */
-		if (ti->type->status) {
-			if (ti->type->status(ti, type, outptr, remaining)) {
-				param->flags |= DM_BUFFER_FULL_FLAG;
-				break;
-			}
-		} else
+		if (ti->type->status)
+			ti->type->status(ti, type, outptr, remaining);
+		else
 			outptr[0] = '\0';
 
-		outptr += strlen(outptr) + 1;
+		l = strlen(outptr) + 1;
+		if (l == remaining) {
+			param->flags |= DM_BUFFER_FULL_FLAG;
+			break;
+		}
+
+		outptr += l;
 		used = param->data_start + (outptr - outbuf);
 
 		outptr = align_ptr(outptr);
@@ -1562,6 +1566,14 @@ static int copy_params(struct dm_ioctl __user *user, struct dm_ioctl **param)
 
 	if (copy_from_user(dmi, user, tmp.data_size))
 		goto bad;
+
+	/*
+	 * Abort if something changed the ioctl data while it was being copied.
+	 */
+	if (dmi->data_size != tmp.data_size) {
+		DMERR("rejecting ioctl: data size modified while processing parameters");
+		goto bad;
+	}
 
 	/* Wipe the user buffer so we do not return it to userspace */
 	if (secure_data && clear_user(user, tmp.data_size))

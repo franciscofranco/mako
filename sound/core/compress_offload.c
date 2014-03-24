@@ -100,12 +100,15 @@ static int snd_compr_open(struct inode *inode, struct file *f)
 
 	if (dirn != compr->direction) {
 		pr_err("this device doesn't support this direction\n");
+		snd_card_unref(compr->card);
 		return -EINVAL;
 	}
 
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
-	if (!data)
+	if (!data) {
+		snd_card_unref(compr->card);
 		return -ENOMEM;
+	}
 	data->stream.ops = compr->ops;
 	data->stream.direction = dirn;
 	data->stream.private_data = compr->private_data;
@@ -113,6 +116,7 @@ static int snd_compr_open(struct inode *inode, struct file *f)
 	runtime = kzalloc(sizeof(*runtime), GFP_KERNEL);
 	if (!runtime) {
 		kfree(data);
+		snd_card_unref(compr->card);
 		return -ENOMEM;
 	}
 	runtime->state = SNDRV_PCM_STATE_OPEN;
@@ -126,7 +130,8 @@ static int snd_compr_open(struct inode *inode, struct file *f)
 		kfree(runtime);
 		kfree(data);
 	}
-	return ret;
+	snd_card_unref(compr->card);
+	return 0;
 }
 
 static int snd_compr_free(struct inode *inode, struct file *f)
@@ -692,7 +697,7 @@ static long snd_compr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	mutex_lock(&stream->device->lock);
 	switch (_IOC_NR(cmd)) {
 	case _IOC_NR(SNDRV_COMPRESS_IOCTL_VERSION):
-		put_user(SNDRV_COMPRESS_VERSION,
+		retval = put_user(SNDRV_COMPRESS_VERSION,
 				(int __user *)arg) ? -EFAULT : 0;
 		break;
 	case _IOC_NR(SNDRV_COMPRESS_GET_CAPS):
@@ -786,7 +791,8 @@ static int snd_compress_dev_disconnect(struct snd_device *device)
 	struct snd_compr *compr;
 
 	compr = device->device_data;
-	snd_unregister_device(compr->direction, compr->card, compr->device);
+	snd_unregister_device(SNDRV_DEVICE_TYPE_COMPRESS, compr->card,
+		compr->device);
 	return 0;
 }
 

@@ -19,7 +19,7 @@
 /*
  * Tunable constants
  */
-#define ENDIO_HOOK_POOL_SIZE 10240
+#define ENDIO_HOOK_POOL_SIZE 1024
 #define DEFERRED_SET_SIZE 64
 #define MAPPING_POOL_SIZE 1024
 #define PRISON_CELLS 1024
@@ -855,7 +855,7 @@ static void process_prepared_mapping(struct new_mapping *m)
 
 	if (m->err) {
 		cell_error(m->cell);
-		return;
+		goto out;
 	}
 
 	/*
@@ -867,7 +867,7 @@ static void process_prepared_mapping(struct new_mapping *m)
 	if (r) {
 		DMERR("dm_thin_insert_block() failed");
 		cell_error(m->cell);
-		return;
+		goto out;
 	}
 
 	/*
@@ -882,6 +882,7 @@ static void process_prepared_mapping(struct new_mapping *m)
 	} else
 		cell_defer(tc, m->cell, m->data_block);
 
+out:
 	list_del(&m->list);
 	mempool_free(m, tc->pool->mapping_pool);
 }
@@ -1240,7 +1241,10 @@ static void process_discard(struct thin_c *tc, struct bio *bio)
 
 			cell_release_singleton(cell, bio);
 			cell_release_singleton(cell2, bio);
-			remap_and_issue(tc, bio, lookup_result.block);
+			if ((!lookup_result.shared) && pool->pf.discard_passdown)
+				remap_and_issue(tc, bio, lookup_result.block);
+			else
+				bio_endio(bio, 0);
 		}
 		break;
 
@@ -2023,6 +2027,7 @@ static int pool_ctr(struct dm_target *ti, unsigned argc, char **argv)
 		 * thin devices' discard limits consistent).
 		 */
 		ti->discards_supported = 1;
+		ti->discard_zeroes_data_unsupported = 1;
 	}
 	ti->private = pt;
 
@@ -2320,8 +2325,8 @@ static int pool_message(struct dm_target *ti, unsigned argc, char **argv)
  *    <transaction id> <used metadata sectors>/<total metadata sectors>
  *    <used data sectors>/<total data sectors> <held metadata root>
  */
-static int pool_status(struct dm_target *ti, status_type_t type,
-		       char *result, unsigned maxlen)
+static void pool_status(struct dm_target *ti, status_type_t type,
+			char *result, unsigned maxlen)
 {
 	int r, count;
 	unsigned sz = 0;
@@ -2338,32 +2343,41 @@ static int pool_status(struct dm_target *ti, status_type_t type,
 
 	switch (type) {
 	case STATUSTYPE_INFO:
-		r = dm_pool_get_metadata_transaction_id(pool->pmd,
-							&transaction_id);
-		if (r)
-			return r;
+		r = dm_pool_get_metadata_transaction_id(pool->pmd, &transaction_id);
+		if (r) {
+			DMERR("dm_pool_get_metadata_transaction_id returned %d", r);
+			goto err;
+		}
 
-		r = dm_pool_get_free_metadata_block_count(pool->pmd,
-							  &nr_free_blocks_metadata);
-		if (r)
-			return r;
+		r = dm_pool_get_free_metadata_block_count(pool->pmd, &nr_free_blocks_metadata);
+		if (r) {
+			DMERR("dm_pool_get_free_metadata_block_count returned %d", r);
+			goto err;
+		}
 
 		r = dm_pool_get_metadata_dev_size(pool->pmd, &nr_blocks_metadata);
-		if (r)
-			return r;
+		if (r) {
+			DMERR("dm_pool_get_metadata_dev_size returned %d", r);
+			goto err;
+		}
 
-		r = dm_pool_get_free_block_count(pool->pmd,
-						 &nr_free_blocks_data);
-		if (r)
-			return r;
+		r = dm_pool_get_free_block_count(pool->pmd, &nr_free_blocks_data);
+		if (r) {
+			DMERR("dm_pool_get_free_block_count returned %d", r);
+			goto err;
+		}
 
 		r = dm_pool_get_data_dev_size(pool->pmd, &nr_blocks_data);
-		if (r)
-			return r;
+		if (r) {
+			DMERR("dm_pool_get_data_dev_size returned %d", r);
+			goto err;
+		}
 
 		r = dm_pool_get_held_metadata_root(pool->pmd, &held_root);
-		if (r)
-			return r;
+		if (r) {
+			DMERR("dm_pool_get_metadata_snap returned %d", r);
+			goto err;
+		}
 
 		DMEMIT("%llu %llu/%llu %llu/%llu ",
 		       (unsigned long long)transaction_id,
@@ -2401,8 +2415,10 @@ static int pool_status(struct dm_target *ti, status_type_t type,
 
 		break;
 	}
+	return;
 
-	return 0;
+err:
+	DMEMIT("Error");
 }
 
 static int pool_iterate_devices(struct dm_target *ti,
@@ -2439,7 +2455,6 @@ static void set_discard_limits(struct pool *pool, struct queue_limits *limits)
 	 * bios that overlap 2 blocks.
 	 */
 	limits->discard_granularity = pool->sectors_per_block << SECTOR_SHIFT;
-	limits->discard_zeroes_data = pool->pf.zero_new_blocks;
 }
 
 static void pool_io_hints(struct dm_target *ti, struct queue_limits *limits)
@@ -2575,6 +2590,7 @@ static int thin_ctr(struct dm_target *ti, unsigned argc, char **argv)
 	if (tc->pool->pf.discard_enabled) {
 		ti->discards_supported = 1;
 		ti->num_discard_requests = 1;
+		ti->discard_zeroes_data_unsupported = 1;
 	}
 
 	dm_put(pool_md);
@@ -2654,8 +2670,8 @@ static void thin_postsuspend(struct dm_target *ti)
 /*
  * <nr mapped sectors> <highest mapped sector>
  */
-static int thin_status(struct dm_target *ti, status_type_t type,
-		       char *result, unsigned maxlen)
+static void thin_status(struct dm_target *ti, status_type_t type,
+			char *result, unsigned maxlen)
 {
 	int r;
 	ssize_t sz = 0;
@@ -2669,12 +2685,16 @@ static int thin_status(struct dm_target *ti, status_type_t type,
 		switch (type) {
 		case STATUSTYPE_INFO:
 			r = dm_thin_get_mapped_count(tc->td, &mapped);
-			if (r)
-				return r;
+			if (r) {
+				DMERR("dm_thin_get_mapped_count returned %d", r);
+				goto err;
+			}
 
 			r = dm_thin_get_highest_mapped_block(tc->td, &highest);
-			if (r < 0)
-				return r;
+			if (r < 0) {
+				DMERR("dm_thin_get_highest_mapped_block returned %d", r);
+				goto err;
+			}
 
 			DMEMIT("%llu ", mapped * tc->pool->sectors_per_block);
 			if (r)
@@ -2694,7 +2714,10 @@ static int thin_status(struct dm_target *ti, status_type_t type,
 		}
 	}
 
-	return 0;
+	return;
+
+err:
+	DMEMIT("Error");
 }
 
 static int thin_iterate_devices(struct dm_target *ti,

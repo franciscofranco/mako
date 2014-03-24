@@ -380,6 +380,8 @@ static int dwc3_ep0_handle_feature(struct dwc3 *dwc,
 			dep = dwc3_wIndex_to_dep(dwc, wIndex);
 			if (!dep)
 				return -EINVAL;
+			if (set == 0 && (dep->flags & DWC3_EP_WEDGE))
+				break;
 			ret = __dwc3_gadget_ep_set_halt(dep, set);
 			if (ret)
 				return -EINVAL;
@@ -569,7 +571,6 @@ static void dwc3_ep0_complete_data(struct dwc3 *dwc,
 		transferred = min_t(u32, ur->length,
 				transfer_size - length);
 		memcpy(ur->buf, dwc->ep0_bounce, transferred);
-		dwc->ep0_bounced = false;
 	} else {
 		transferred = ur->length - length;
 	}

@@ -576,7 +576,7 @@ static int pppoe_release(struct socket *sock)
 
 	po = pppox_sk(sk);
 
-	if (sk->sk_state & (PPPOX_CONNECTED | PPPOX_BOUND)) {
+	if (sk->sk_state & (PPPOX_CONNECTED | PPPOX_BOUND | PPPOX_ZOMBIE)) {
 		dev_put(po->pppoe_dev);
 		po->pppoe_dev = NULL;
 	}
@@ -984,8 +984,6 @@ static int pppoe_recvmsg(struct kiocb *iocb, struct socket *sock,
 				flags & MSG_DONTWAIT, &error);
 	if (error < 0)
 		goto end;
-
-	m->msg_namelen = 0;
 
 	if (skb) {
 		total_len = min_t(size_t, total_len, skb->len);

@@ -82,6 +82,9 @@ struct fuse_inode {
 	    preserve the original mode */
 	umode_t orig_i_mode;
 
+	/** 64 bit inode number */
+	u64 orig_ino;
+
 	/** Version of last attribute change */
 	u64 attr_version;
 
@@ -100,6 +103,15 @@ struct fuse_inode {
 
 	/** List of writepage requestst (pending or sent) */
 	struct list_head writepages;
+
+	/** Miscellaneous bits describing inode state */
+	unsigned long state;
+};
+
+/** FUSE inode state bits */
+enum {
+	/** An operation changing file size is in progress  */
+	FUSE_I_SIZE_UNSTABLE,
 };
 
 struct fuse_conn;

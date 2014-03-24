@@ -94,7 +94,6 @@ static inline int kref_put(struct kref *kref, void (*release)(struct kref *kref)
 	return kref_sub(kref, 1, release);
 }
 
-
 /**
  * kref_get_unless_zero - Increment refcount for object unless it is zero.
  * @kref: object.

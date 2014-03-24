@@ -209,23 +209,11 @@ static inline bool virtqueue_enable_cb(struct virtqueue *vq)
 	return vq->vq_ops->enable_cb(vq);
 }
 
-/**
- * virtqueue_enable_cb_delayed - restart callbacks after disable_cb.
- * @vq: the struct virtqueue we're talking about.
- *
- * This re-enables callbacks but hints to the other side to delay
- * interrupts until most of the available buffers have been processed;
- * it returns "false" if there are many pending buffers in the queue,
- * to detect a possible race between the driver checking for more work,
- * and enabling callbacks.
- *
- * Caller must ensure we don't call this with other virtqueue
- * operations at the same time (except where noted).
- */
-static inline bool virtqueue_enable_cb_delayed(struct virtqueue *vq)
-{
-	return vq->vq_ops->enable_cb_delayed(vq);
-}
+unsigned virtqueue_enable_cb_prepare(struct virtqueue *vq);
+
+bool virtqueue_poll(struct virtqueue *vq, unsigned);
+
+bool virtqueue_enable_cb_delayed(struct virtqueue *vq);
 
 /**
  * virtqueue_detach_unused_buf - detach first unused buffer

@@ -596,7 +596,6 @@ static int mxc_nand_correct_data_v2_v3(struct mtd_info *mtd, u_char *dat,
 		ecc_stat >>= 4;
 	} while (--no_subpages);
 
-	mtd->ecc_stats.corrected += ret;
 	pr_debug("%d Symbol Correctable RS-ECC Error\n", ret);
 
 	return ret;
@@ -1219,17 +1218,17 @@ static int __init mxcnd_probe(struct platform_device *pdev)
 	if (nfc_is_v21() && mtd->writesize == 4096)
 		this->ecc.layout = &nandv2_hw_eccoob_4k;
 
-	/* second phase scan */
-	if (nand_scan_tail(mtd)) {
-		err = -ENXIO;
-		goto escan;
-	}
-
 	if (this->ecc.mode == NAND_ECC_HW) {
 		if (nfc_is_v1())
 			this->ecc.strength = 1;
 		else
 			this->ecc.strength = (host->eccsize == 4) ? 4 : 8;
+	}
+
+	/* second phase scan */
+	if (nand_scan_tail(mtd)) {
+		err = -ENXIO;
+		goto escan;
 	}
 
 	/* Register the partitions */

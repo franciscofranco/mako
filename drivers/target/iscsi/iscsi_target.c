@@ -50,7 +50,7 @@
 static LIST_HEAD(g_tiqn_list);
 static LIST_HEAD(g_np_list);
 static DEFINE_SPINLOCK(tiqn_lock);
-static DEFINE_SPINLOCK(np_lock);
+static DEFINE_MUTEX(np_lock);
 
 static struct idr tiqn_idr;
 struct idr sess_idr;
@@ -262,6 +262,9 @@ int iscsit_deaccess_np(struct iscsi_np *np, struct iscsi_portal_group *tpg)
 	return 0;
 }
 
+/*
+ * Called with mutex np_lock held
+ */
 static struct iscsi_np *iscsit_get_np(
 	struct __kernel_sockaddr_storage *sockaddr,
 	int network_transport)
@@ -272,11 +275,10 @@ static struct iscsi_np *iscsit_get_np(
 	int ip_match = 0;
 	u16 port;
 
-	spin_lock_bh(&np_lock);
 	list_for_each_entry(np, &g_np_list, np_list) {
-		spin_lock(&np->np_thread_lock);
+		spin_lock_bh(&np->np_thread_lock);
 		if (np->np_thread_state != ISCSI_NP_THREAD_ACTIVE) {
-			spin_unlock(&np->np_thread_lock);
+			spin_unlock_bh(&np->np_thread_lock);
 			continue;
 		}
 
@@ -309,13 +311,11 @@ static struct iscsi_np *iscsit_get_np(
 			 * while iscsi_tpg_add_network_portal() is called.
 			 */
 			np->np_exports++;
-			spin_unlock(&np->np_thread_lock);
-			spin_unlock_bh(&np_lock);
+			spin_unlock_bh(&np->np_thread_lock);
 			return np;
 		}
-		spin_unlock(&np->np_thread_lock);
+		spin_unlock_bh(&np->np_thread_lock);
 	}
-	spin_unlock_bh(&np_lock);
 
 	return NULL;
 }
@@ -329,16 +329,22 @@ struct iscsi_np *iscsit_add_np(
 	struct sockaddr_in6 *sock_in6;
 	struct iscsi_np *np;
 	int ret;
+
+	mutex_lock(&np_lock);
+
 	/*
 	 * Locate the existing struct iscsi_np if already active..
 	 */
 	np = iscsit_get_np(sockaddr, network_transport);
-	if (np)
+	if (np) {
+		mutex_unlock(&np_lock);
 		return np;
+	}
 
 	np = kzalloc(sizeof(struct iscsi_np), GFP_KERNEL);
 	if (!np) {
 		pr_err("Unable to allocate memory for struct iscsi_np\n");
+		mutex_unlock(&np_lock);
 		return ERR_PTR(-ENOMEM);
 	}
 
@@ -361,6 +367,7 @@ struct iscsi_np *iscsit_add_np(
 	ret = iscsi_target_setup_login_socket(np, sockaddr);
 	if (ret != 0) {
 		kfree(np);
+		mutex_unlock(&np_lock);
 		return ERR_PTR(ret);
 	}
 
@@ -369,6 +376,7 @@ struct iscsi_np *iscsit_add_np(
 		pr_err("Unable to create kthread: iscsi_np\n");
 		ret = PTR_ERR(np->np_thread);
 		kfree(np);
+		mutex_unlock(&np_lock);
 		return ERR_PTR(ret);
 	}
 	/*
@@ -379,10 +387,10 @@ struct iscsi_np *iscsit_add_np(
 	 * point because iscsi_np has not been added to g_np_list yet.
 	 */
 	np->np_exports = 1;
+	np->np_thread_state = ISCSI_NP_THREAD_ACTIVE;
 
-	spin_lock_bh(&np_lock);
 	list_add_tail(&np->np_list, &g_np_list);
-	spin_unlock_bh(&np_lock);
+	mutex_unlock(&np_lock);
 
 	pr_debug("CORE[0] - Added Network Portal: %s:%hu on %s\n",
 		np->np_ip, np->np_port, (np->np_network_transport == ISCSI_TCP) ?
@@ -427,19 +435,8 @@ int iscsit_reset_np_thread(
 
 int iscsit_del_np_comm(struct iscsi_np *np)
 {
-	if (!np->np_socket)
-		return 0;
-
-	/*
-	 * Some network transports allocate their own struct sock->file,
-	 * see  if we need to free any additional allocated resources.
-	 */
-	if (np->np_flags & NPF_SCTP_STRUCT_FILE) {
-		kfree(np->np_socket->file);
-		np->np_socket->file = NULL;
-	}
-
-	sock_release(np->np_socket);
+	if (np->np_socket)
+		sock_release(np->np_socket);
 	return 0;
 }
 
@@ -464,9 +461,9 @@ int iscsit_del_np(struct iscsi_np *np)
 	}
 	iscsit_del_np_comm(np);
 
-	spin_lock_bh(&np_lock);
+	mutex_lock(&np_lock);
 	list_del(&np->np_list);
-	spin_unlock_bh(&np_lock);
+	mutex_unlock(&np_lock);
 
 	pr_debug("CORE[0] - Removed Network Portal: %s:%hu on %s\n",
 		np->np_ip, np->np_port, (np->np_network_transport == ISCSI_TCP) ?
@@ -2365,7 +2362,7 @@ static void iscsit_build_conn_drop_async_message(struct iscsi_conn *conn)
 	if (!conn_p)
 		return;
 
-	cmd = iscsit_allocate_cmd(conn_p, GFP_KERNEL);
+	cmd = iscsit_allocate_cmd(conn_p, GFP_ATOMIC);
 	if (!cmd) {
 		iscsit_dec_conn_usage_count(conn_p);
 		return;
@@ -3202,7 +3199,6 @@ static int iscsit_build_sendtargets_response(struct iscsi_cmd *cmd)
 		len += 1;
 
 		if ((len + payload_len) > buffer_len) {
-			spin_unlock(&tiqn->tiqn_tpg_lock);
 			end_of_buf = 1;
 			goto eob;
 		}
@@ -3355,6 +3351,7 @@ static int iscsit_send_reject(
 	hdr->opcode		= ISCSI_OP_REJECT;
 	hdr->flags		|= ISCSI_FLAG_CMD_FINAL;
 	hton24(hdr->dlength, ISCSI_HDR_LEN);
+	hdr->ffffffff		= 0xffffffff;
 	cmd->stat_sn		= conn->stat_sn++;
 	hdr->statsn		= cpu_to_be32(cmd->stat_sn);
 	hdr->exp_cmdsn	= cpu_to_be32(conn->sess->exp_cmd_sn);
@@ -3520,7 +3517,9 @@ restart:
 		 */
 		iscsit_thread_check_cpumask(conn, current, 1);
 
-		schedule_timeout_interruptible(MAX_SCHEDULE_TIMEOUT);
+		wait_event_interruptible(conn->queues_wq,
+					 !iscsit_conn_all_queues_empty(conn) ||
+					 ts->status == ISCSI_THREAD_SET_RESET);
 
 		if ((ts->status == ISCSI_THREAD_SET_RESET) ||
 		     signal_pending(current))
@@ -4089,13 +4088,8 @@ int iscsit_close_connection(
 	kfree(conn->conn_ops);
 	conn->conn_ops = NULL;
 
-	if (conn->sock) {
-		if (conn->conn_flags & CONNFLAG_SCTP_STRUCT_FILE) {
-			kfree(conn->sock->file);
-			conn->sock->file = NULL;
-		}
+	if (conn->sock)
 		sock_release(conn->sock);
-	}
 	conn->thread_set = NULL;
 
 	pr_debug("Moving to TARG_CONN_STATE_FREE.\n");
