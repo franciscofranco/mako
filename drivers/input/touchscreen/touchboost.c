@@ -105,14 +105,14 @@ static void do_input_boost(struct work_struct *work)
 	ret = cpufreq_get_policy(&policy, 0);
 	if (ret)
 		return;
-		
-	if (policy.cur >= input_boost_freq)
+
+	if (policy.cur < input_boost_freq)
 	{
 		boost_freq_buf = input_boost_freq;
 		cpufreq_update_policy(0);
 	}
 
-	queue_delayed_work(input_boost_wq, &rem_input_boost, msecs_to_jiffies(40));
+	queue_delayed_work(input_boost_wq, &rem_input_boost, msecs_to_jiffies(30));
 }
 
 static void boost_input_event(struct input_handle *handle,
