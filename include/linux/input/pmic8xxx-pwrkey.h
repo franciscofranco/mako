@@ -39,4 +39,6 @@ struct pm8xxx_pwrkey_platform_data  {
 
 void wake_up_display(struct input_dev *input_dev);
 
+extern bool pwrkey_pressed;
+
 #endif /* __PMIC8XXX_PWRKEY_H__ */
