@@ -70,6 +70,15 @@ module_param(doubletap_pwrkey_suspend, bool, 0664);
 bool doubletap_full_window = false;
 module_param(doubletap_full_window, bool, 0664);
 
+unsigned int doubletap_charger = 0;
+module_param(doubletap_charger, uint, 0664);
+
+enum { /* Values for doubletap_charger */
+	DT2W_CHARGER_IGNORE = 0,
+	DT2W_CHARGER_ENABLE,
+	DT2W_CHARGER_ONLY,
+};
+
 #define DOUBLETAP_Y_MARGIN 600
 #define DOUBLETAP_X_MARGIN 300
 
@@ -2084,6 +2093,7 @@ static int touch_remove(struct i2c_client *client)
 #if defined(CONFIG_HAS_EARLYSUSPEND)
 static void touch_early_suspend(struct early_suspend *h)
 {
+	bool keep_touch_on = false;
 	struct lge_touch_data *ts =
 			container_of(h, struct lge_touch_data, early_suspend);
 
@@ -2096,8 +2106,20 @@ static void touch_early_suspend(struct early_suspend *h)
 		return;
 	}
 
-	if (doubletap_to_wake &&
-			(!doubletap_pwrkey_suspend || !pwrkey_pressed)) {
+
+	if (doubletap_to_wake) {
+		/* Check charging state */
+		if (doubletap_charger == DT2W_CHARGER_ONLY) {
+			if (ts->charger_type)
+				keep_touch_on = true;
+		} else if (!doubletap_pwrkey_suspend || !pwrkey_pressed) {
+			keep_touch_on = true;
+		} else if (doubletap_charger == DT2W_CHARGER_ENABLE && ts->charger_type) {
+			keep_touch_on = true;
+		}
+	}
+
+	if (keep_touch_on) {
 		enable_irq_wake(ts->client->irq);
 	} else {
 		if (ts->pdata->role->operation_mode == INTERRUPT_MODE)
