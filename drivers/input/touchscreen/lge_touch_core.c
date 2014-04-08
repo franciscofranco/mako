@@ -60,6 +60,9 @@ static bool touch_suspended = false;
 bool doubletap_to_wake = false;
 module_param(doubletap_to_wake, bool, 0664);
 
+unsigned long doubletap_delay = 1000;
+module_param(doubletap_delay, ulong, 0664);
+
 #define LGE_TOUCH_ATTR(_name, _mode, _show, _store)               \
 	struct lge_touch_attribute lge_touch_attr_##_name =       \
 	__ATTR(_name, _mode, _show, _store)
@@ -840,7 +843,7 @@ static void touch_work_func(struct work_struct *work)
 		wake.new_touch = true;
 
 	if (suspended && doubletap_to_wake && ts->ts_data.curr_data[0].state) {
-		if (!(wake.touch_time + 2000 >= ktime_to_ms(ktime_get()))) {
+		if (!(wake.touch_time + doubletap_delay >= ktime_to_ms(ktime_get()))) {
 			wake.touch_time = ktime_to_ms(ktime_get());
 			wake.touches = 0;
 		}
