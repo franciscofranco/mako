@@ -833,25 +833,21 @@ static void touch_work_func(struct work_struct *work)
 	int next_work = 0;
 	int ret;
 
-	if (suspended && doubletap_to_wake)
-	{
-		if (!(wake.touch_time + 2000 >= ktime_to_ms(ktime_get())))
-		{
+	if (suspended && doubletap_to_wake) {
+		if (!(wake.touch_time + 2000 >= ktime_to_ms(ktime_get()))) {
 			wake.touch_time = ktime_to_ms(ktime_get());
 			wake.touches = 0;
 		}
 			
 		if (!time_is_after_jiffies(
-			wake.window_time + msecs_to_jiffies(wake.sample_time_ms)))
-		{
+			wake.window_time + msecs_to_jiffies(wake.sample_time_ms))) {
 			/*
 			 * Don't count as touch when we release the touch input
 			 */
 			if (ts->ts_data.curr_data[0].state != ABS_RELEASE)
 				++wake.touches;
 
-			if (wake.touches == 2)
-			{
+			if (wake.touches == 2) {
 				input_event(wake.input_device, EV_KEY, KEY_POWER, 1);
 				input_event(wake.input_device, EV_SYN, 0, 0);
 				msleep(100);
@@ -863,7 +859,7 @@ static void touch_work_func(struct work_struct *work)
 		}
 
 		wake.window_time = jiffies;
-	} 
+	}
 
 	atomic_dec(&ts->next_work);
 	ts->ts_data.total_num = 0;
@@ -2072,25 +2068,22 @@ static void touch_early_suspend(struct early_suspend *h)
 		return;
 	}
 
-	if (doubletap_to_wake)
-	{
+	if (doubletap_to_wake) {
 		enable_irq_wake(ts->client->irq);
-	}
-	else 
-	{
+	} else {
 		if (ts->pdata->role->operation_mode == INTERRUPT_MODE)
-                disable_irq(ts->client->irq);
-        else
-                hrtimer_cancel(&ts->timer);
+			disable_irq(ts->client->irq);
+		else
+			hrtimer_cancel(&ts->timer);
 
-        cancel_work_sync(&ts->work);
-        cancel_delayed_work_sync(&ts->work_init);
-        if (ts->pdata->role->key_type == TOUCH_HARD_KEY)
-                cancel_delayed_work_sync(&ts->work_touch_lock);
+		cancel_work_sync(&ts->work);
+		cancel_delayed_work_sync(&ts->work_init);
+		if (ts->pdata->role->key_type == TOUCH_HARD_KEY)
+			cancel_delayed_work_sync(&ts->work_touch_lock);
 
-        release_all_ts_event(ts);
+		release_all_ts_event(ts);
 
-        touch_power_cntl(ts, ts->pdata->role->suspend_pwr);
+		touch_power_cntl(ts, ts->pdata->role->suspend_pwr);
 
 	}
 }
@@ -2109,26 +2102,23 @@ static void touch_late_resume(struct early_suspend *h)
 		return;
 	}
 
-	if (doubletap_to_wake)
-	{
+	if (doubletap_to_wake) {
 		disable_irq_wake(ts->client->irq);
-	}
-	else
-	{
+	} else {
 		touch_power_cntl(ts, ts->pdata->role->resume_pwr);
 
-        if (ts->pdata->role->operation_mode == INTERRUPT_MODE)
-                enable_irq(ts->client->irq);
-        else
-                hrtimer_start(&ts->timer,
-                        ktime_set(0, ts->pdata->role->report_period),
-                                        HRTIMER_MODE_REL);
+		if (ts->pdata->role->operation_mode == INTERRUPT_MODE)
+			enable_irq(ts->client->irq);
+		else
+			hrtimer_start(&ts->timer,
+					ktime_set(0, ts->pdata->role->report_period),
+					HRTIMER_MODE_REL);
 
-        if (ts->pdata->role->resume_pwr == POWER_ON)
-                queue_delayed_work(touch_wq, &ts->work_init,
-                        msecs_to_jiffies(ts->pdata->role->booting_delay));
-        else
-                queue_delayed_work(touch_wq, &ts->work_init, 0);
+		if (ts->pdata->role->resume_pwr == POWER_ON)
+			queue_delayed_work(touch_wq, &ts->work_init,
+					msecs_to_jiffies(ts->pdata->role->booting_delay));
+		else
+			queue_delayed_work(touch_wq, &ts->work_init, 0);
 	}
 }
 #endif
