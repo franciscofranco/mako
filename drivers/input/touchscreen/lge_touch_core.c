@@ -67,6 +67,9 @@ module_param(doubletap_delay, ulong, 0664);
 bool doubletap_pwrkey_suspend = false;
 module_param(doubletap_pwrkey_suspend, bool, 0664);
 
+#define DOUBLETAP_Y_MARGIN 600
+#define DOUBLETAP_X_MARGIN 300
+
 #define LGE_TOUCH_ATTR(_name, _mode, _show, _store)               \
 	struct lge_touch_attribute lge_touch_attr_##_name =       \
 	__ATTR(_name, _mode, _show, _store)
@@ -835,6 +838,9 @@ void wake_up_display(struct input_dev *input_dev)
 /*
  * Touch work function
  */
+#define DOUBLETAP_LEFT_BORDER  (DOUBLETAP_X_MARGIN)
+#define DOUBLETAP_RIGHT_BORDER (ts->pdata->caps->x_max - DOUBLETAP_X_MARGIN)
+#define DOUBLETAP_TOP_BORDER   (ts->pdata->caps->y_max - DOUBLETAP_Y_MARGIN)
 static void touch_work_func(struct work_struct *work)
 {
 	struct lge_touch_data *ts =
@@ -847,6 +853,13 @@ static void touch_work_func(struct work_struct *work)
 		wake.new_touch = true;
 
 	if (suspended && doubletap_to_wake && ts->ts_data.curr_data[0].state) {
+                if (ts->ts_data.curr_data[0].y_position < DOUBLETAP_TOP_BORDER ||
+				ts->ts_data.curr_data[0].x_position < DOUBLETAP_LEFT_BORDER ||
+				ts->ts_data.curr_data[0].x_position > DOUBLETAP_RIGHT_BORDER) {
+			wake.touches = 0;
+			goto skip_wake;
+		}
+
 		if (!(wake.touch_time + doubletap_delay >= ktime_to_ms(ktime_get()))) {
 			wake.touch_time = ktime_to_ms(ktime_get());
 			wake.touches = 0;
@@ -868,6 +881,7 @@ static void touch_work_func(struct work_struct *work)
 			}
 		}
 
+skip_wake:
 		wake.window_time = jiffies;
 	}
 
