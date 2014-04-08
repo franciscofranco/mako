@@ -809,12 +809,14 @@ static struct double_tap_to_wake {
 	unsigned long window_time;
 	unsigned long sample_time_ms;
 	unsigned int touches;
+	bool new_touch;
 	struct input_dev *input_device;
 } wake = {
 	.touch_time = 0,
 	.window_time = 0,
 	.sample_time_ms = 100,
 	.touches = 0,
+	.new_touch = false,
 };
 
 void wake_up_display(struct input_dev *input_dev)
@@ -834,28 +836,28 @@ static void touch_work_func(struct work_struct *work)
 	int next_work = 0;
 	int ret;
 
-	if (suspended && doubletap_to_wake) {
+	if (!ts->ts_data.curr_data[0].state)
+		wake.new_touch = true;
+
+	if (suspended && doubletap_to_wake && ts->ts_data.curr_data[0].state) {
 		if (!(wake.touch_time + 2000 >= ktime_to_ms(ktime_get()))) {
 			wake.touch_time = ktime_to_ms(ktime_get());
 			wake.touches = 0;
 		}
-			
+
 		if (!time_is_after_jiffies(
 			wake.window_time + msecs_to_jiffies(wake.sample_time_ms))) {
-			/*
-			 * Don't count as touch when we release the touch input
-			 */
-			if (ts->ts_data.curr_data[0].state != ABS_RELEASE)
+			if (wake.new_touch) {
 				++wake.touches;
+				wake.new_touch = false;
+			}
 
 			if (wake.touches == 2) {
-				input_event(wake.input_device, EV_KEY, KEY_POWER, 1);
-				input_event(wake.input_device, EV_SYN, 0, 0);
-				msleep(100);
-				input_event(wake.input_device, EV_KEY, KEY_POWER, 0);
-				input_event(wake.input_device, EV_SYN, 0, 0);
-
-				input_sync(wake.input_device);	
+				input_report_key(wake.input_device, KEY_POWER, 1);
+				input_sync(wake.input_device);
+				msleep(80);
+				input_report_key(wake.input_device, KEY_POWER, 0);
+				input_sync(wake.input_device);
 			}
 		}
 
