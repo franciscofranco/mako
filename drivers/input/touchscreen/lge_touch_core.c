@@ -2121,6 +2121,7 @@ static void touch_early_suspend(struct early_suspend *h)
 
 	if (keep_touch_on) {
 		enable_irq_wake(ts->client->irq);
+		release_all_ts_event(ts);
 	} else {
 		if (ts->pdata->role->operation_mode == INTERRUPT_MODE)
 			disable_irq(ts->client->irq);
@@ -2156,6 +2157,7 @@ static void touch_late_resume(struct early_suspend *h)
 
 	if (!touch_suspended) {
 		disable_irq_wake(ts->client->irq);
+		release_all_ts_event(ts);
 	} else {
 		touch_suspended = false;
 		touch_power_cntl(ts, ts->pdata->role->resume_pwr);
