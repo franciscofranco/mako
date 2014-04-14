@@ -876,13 +876,11 @@ bool dt2w_touch_outside_area(struct lge_touch_data *ts) {
 			return true;
 		break;
 	case DT2W_AREA_TOP:
-		// FIXME:
 		if (y > DOUBLETAP_Y_MARGIN ||
 		    x < DOUBLETAP_LEFT_BORDER || x > DOUBLETAP_RIGHT_BORDER)
 			return true;
 		break;
 	case DT2W_AREA_MIDDLE:
-		// FIXME:
 		if (y < DOUBLETAP_Y_MARGIN || y > DOUBLETAP_BOTTOM_BORDER ||
 		    x < DOUBLETAP_LEFT_BORDER || x > DOUBLETAP_RIGHT_BORDER)
 			return true;
