@@ -67,11 +67,18 @@ module_param(doubletap_delay, ulong, 0664);
 bool doubletap_pwrkey_suspend = false;
 module_param(doubletap_pwrkey_suspend, bool, 0664);
 
-bool doubletap_full_window = false;
-module_param(doubletap_full_window, bool, 0664);
+unsigned int doubletap_area = false;
+module_param(doubletap_area, uint, 0664);
 
 unsigned int doubletap_charger = 0;
 module_param(doubletap_charger, uint, 0664);
+
+enum { /* Values for doubletap_area */
+	DT2W_AREA_FULL_WINDOW = 0,
+	DT2W_AREA_BOTTOM,
+	DT2W_AREA_TOP,
+	DT2W_AREA_MIDDLE,
+};
 
 enum { /* Values for doubletap_charger */
 	DT2W_CHARGER_IGNORE = 0,
@@ -854,12 +861,42 @@ void wake_up_display(struct input_dev *input_dev)
 	return;
 }
 
+#define DOUBLETAP_LEFT_BORDER  (DOUBLETAP_X_MARGIN)
+#define DOUBLETAP_RIGHT_BORDER (ts->pdata->caps->x_max - DOUBLETAP_X_MARGIN)
+#define DOUBLETAP_BOTTOM_BORDER   (ts->pdata->caps->y_max - DOUBLETAP_Y_MARGIN)
+bool dt2w_touch_outside_area(struct lge_touch_data *ts) {
+	unsigned int x = ts->ts_data.curr_data[0].x_position;
+	unsigned int y = ts->ts_data.curr_data[0].y_position;
+	switch (doubletap_area) {
+	case DT2W_AREA_FULL_WINDOW:
+		break;
+	case DT2W_AREA_BOTTOM:
+		if (y < DOUBLETAP_BOTTOM_BORDER ||
+		    x < DOUBLETAP_LEFT_BORDER || x > DOUBLETAP_RIGHT_BORDER)
+			return true;
+		break;
+	case DT2W_AREA_TOP:
+		// FIXME:
+		if (y > DOUBLETAP_Y_MARGIN ||
+		    x < DOUBLETAP_LEFT_BORDER || x > DOUBLETAP_RIGHT_BORDER)
+			return true;
+		break;
+	case DT2W_AREA_MIDDLE:
+		// FIXME:
+		if (y < DOUBLETAP_Y_MARGIN || y > DOUBLETAP_BOTTOM_BORDER ||
+		    x < DOUBLETAP_LEFT_BORDER || x > DOUBLETAP_RIGHT_BORDER)
+			return true;
+		break;
+        default:
+                TOUCH_INFO_MSG("doubletap_area: Invalid value - reset.\n");
+                doubletap_area = DT2W_AREA_FULL_WINDOW;
+	}
+	return false;
+}
+
 /*
  * Touch work function
  */
-#define DOUBLETAP_LEFT_BORDER  (DOUBLETAP_X_MARGIN)
-#define DOUBLETAP_RIGHT_BORDER (ts->pdata->caps->x_max - DOUBLETAP_X_MARGIN)
-#define DOUBLETAP_TOP_BORDER   (ts->pdata->caps->y_max - DOUBLETAP_Y_MARGIN)
 static void touch_work_func(struct work_struct *work)
 {
 	struct lge_touch_data *ts =
@@ -872,10 +909,7 @@ static void touch_work_func(struct work_struct *work)
 		wake.new_touch = true;
 
 	if (suspended && doubletap_to_wake && ts->ts_data.curr_data[0].state) {
-		if (!doubletap_full_window &&
-				(ts->ts_data.curr_data[0].y_position < DOUBLETAP_TOP_BORDER ||
-				 ts->ts_data.curr_data[0].x_position < DOUBLETAP_LEFT_BORDER ||
-				 ts->ts_data.curr_data[0].x_position > DOUBLETAP_RIGHT_BORDER)) {
+		if (dt2w_touch_outside_area(ts)) {
 			wake.touches = 0;
 			goto skip_wake;
 		}
