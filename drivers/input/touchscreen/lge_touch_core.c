@@ -52,8 +52,6 @@ static int is_pressure;
 static int is_width_major;
 static int is_width_minor;
 
-/* extern vars */
-struct lge_touch_data *_ts;
 
 bool suspended = false;
 static bool touch_suspended = false;
@@ -2065,8 +2063,6 @@ static int touch_probe(struct i2c_client *client,
 #ifdef CONFIG_TOUCHSCREEN_CHARGER_NOTIFY
 	touch_psy_init(ts);
 #endif
-
-	_ts = ts;
 
 	return 0;
 
