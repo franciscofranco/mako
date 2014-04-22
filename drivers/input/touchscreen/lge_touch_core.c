@@ -55,6 +55,7 @@ static int is_width_minor;
 
 bool suspended = false;
 static bool touch_suspended = false;
+static unsigned int first_x, first_y;
 
 bool doubletap_to_wake = false;
 module_param(doubletap_to_wake, bool, 0664);
@@ -890,6 +891,20 @@ bool dt2w_touch_outside_area(struct lge_touch_data *ts) {
 	return false;
 }
 
+#define DT2W_RADIUS 175
+static bool touch_is_near(struct lge_touch_data *ts,
+		unsigned int x_prev, unsigned int y_prev)
+{
+	const int maxd2 = DT2W_RADIUS*DT2W_RADIUS;
+	int x = (int)ts->ts_data.curr_data[0].x_position;
+	int y = (int)ts->ts_data.curr_data[0].y_position;
+	int delta_x = x - x_prev;
+	int delta_y = y - y_prev;
+	int d2 = (delta_x * delta_x) + (delta_y * delta_y);
+
+	return (d2 <= maxd2);
+}
+
 /*
  * Touch work function
  */
@@ -922,12 +937,15 @@ static void touch_work_func(struct work_struct *work)
 				wake.new_touch = false;
 			}
 
-			if (wake.touches == 2) {
+			if (wake.touches >= 2 && touch_is_near(ts, first_x, first_y)) {
 				input_report_key(wake.input_device, KEY_POWER, 1);
 				input_sync(wake.input_device);
 				msleep(80);
 				input_report_key(wake.input_device, KEY_POWER, 0);
 				input_sync(wake.input_device);
+			} else {
+				first_x = ts->ts_data.curr_data[0].x_position;
+				first_y = ts->ts_data.curr_data[0].y_position;
 			}
 		}
 
