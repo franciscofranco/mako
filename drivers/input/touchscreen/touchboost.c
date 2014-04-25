@@ -86,14 +86,16 @@ static struct notifier_block boost_adjust_nb = {
 
 static void do_rem_input_boost(struct work_struct *work)
 {
+	unsigned int i;
 	boost_freq_buf = 0;
 	/* Force policy re-evaluation to trigger adjust notifier. */
-	cpufreq_update_policy(0);
+	for_each_online_cpu(i)
+		cpufreq_update_policy(i);
 }
 
 static void do_input_boost(struct work_struct *work)
 {
-	unsigned int ret;
+	unsigned int i, ret;
 	struct cpufreq_policy policy;
 
 	/* 
@@ -102,17 +104,21 @@ static void do_input_boost(struct work_struct *work)
 	 */
 	cancel_delayed_work_sync(&rem_input_boost);
 
-	ret = cpufreq_get_policy(&policy, 0);
-	if (ret)
-		return;
-
-	if (policy.cur < input_boost_freq)
+	for_each_online_cpu(i)
 	{
-		boost_freq_buf = input_boost_freq;
-		cpufreq_update_policy(0);
+		ret = cpufreq_get_policy(&policy, i);
+		if (ret)
+			continue;
+
+		if (policy.cur < input_boost_freq)
+		{
+			boost_freq_buf = input_boost_freq;
+			cpufreq_update_policy(i);
+		}
 	}
 
-	queue_delayed_work(input_boost_wq, &rem_input_boost, msecs_to_jiffies(30));
+	queue_delayed_work_on(0, input_boost_wq, 
+		&rem_input_boost, msecs_to_jiffies(30));
 }
 
 static void boost_input_event(struct input_handle *handle,
@@ -163,7 +169,7 @@ static int boost_input_connect(struct input_handler *handler,
 		goto err;
 
 	touchboost_inputopen.handle = handle;
-	queue_work(input_boost_wq, &touchboost_inputopen.inputopen_work);
+	queue_work_on(0, input_boost_wq, &touchboost_inputopen.inputopen_work);
 	return 0;
 
 err:
