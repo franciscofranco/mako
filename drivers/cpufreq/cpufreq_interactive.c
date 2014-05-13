@@ -68,14 +68,14 @@ static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
 
 /* Hi speed to bump to from lo speed when load burst (default max) */
-static unsigned int hispeed_freq = 1000000;
+static unsigned int hispeed_freq = 900000;
 
 /* Go to hi speed when CPU load at or above this value. */
 #define DEFAULT_GO_HISPEED_LOAD 90
 static unsigned long go_hispeed_load = DEFAULT_GO_HISPEED_LOAD;
 
 /* Sampling down factor to be applied to min_sample_time at max freq */
-#define DEFAULT_SAMPLING_DOWN_FACTOR 120000
+#define DEFAULT_SAMPLING_DOWN_FACTOR 100000
 static unsigned int sampling_down_factor = DEFAULT_SAMPLING_DOWN_FACTOR;
 
 /* Target load.  Lower values result in higher CPU speeds. */
@@ -121,7 +121,7 @@ bool boosted;
  * Max additional time to wait in idle, beyond timer_rate, at speeds above
  * minimum before wakeup to reduce speed, or -1 if unnecessary.
  */
-#define DEFAULT_TIMER_SLACK (70000)
+#define DEFAULT_TIMER_SLACK (30000)
 static int timer_slack_val = DEFAULT_TIMER_SLACK;
 
 static bool io_is_busy = true;
@@ -143,9 +143,9 @@ extern u64 last_input_time;
  * sync_freq
  */
 
-static unsigned int up_threshold_any_cpu_load = 50;
+static unsigned int up_threshold_any_cpu_load = 65;
 static unsigned int sync_freq = CPU_SYNC_FREQ;
-static unsigned int up_threshold_any_cpu_freq = 1200000;
+static unsigned int up_threshold_any_cpu_freq = 1100000;
 
 
 static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
@@ -759,7 +759,7 @@ static int thread_migration_notify(struct notifier_block *nb,
 	struct cpufreq_interactive_cpuinfo *target, *source;
 	target = &per_cpu(cpuinfo, target_cpu);
 	source = &per_cpu(cpuinfo, (int)arg);
-	
+
 	if (source->policy->cur > target->policy->cur)
 	{
 		if (source->policy->cur < boost_freq)
@@ -991,13 +991,13 @@ static ssize_t store_input_boost_freq(struct kobject *kobj, struct attribute *at
 {
 	int ret;
 	unsigned long val;
-    
+
 	ret = strict_strtoul(buf, 0, &val);
 	if (ret < 0)
 		return ret;
-    
+
 	input_boost_freq = val;
-    
+
 	return count;
 }
 
