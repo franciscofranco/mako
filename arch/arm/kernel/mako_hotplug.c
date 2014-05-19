@@ -259,7 +259,7 @@ static void mako_hotplug_late_resume(struct early_suspend *handler)
 
 static struct early_suspend early_suspend =
 {
-	.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN,
+	.level = EARLY_SUSPEND_LEVEL_DISABLE_FB,
 	.suspend = mako_hotplug_early_suspend,
 	.resume = mako_hotplug_late_resume,
 };
