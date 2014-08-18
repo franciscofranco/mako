@@ -33,10 +33,12 @@ static struct thermal_info {
 	uint32_t limited_max_freq;
 	unsigned int safe_diff;
 	bool throttling;
+	bool pending_change;
 } info = {
 	.cpuinfo_max_freq = LONG_MAX,
 	.limited_max_freq = LONG_MAX,
 	.safe_diff = 5,
+	.pending_change = false,
 	.throttling = false,
 };
 
@@ -67,7 +69,7 @@ static int msm_thermal_cpufreq_callback(struct notifier_block *nfb,
 {
 	struct cpufreq_policy *policy = data;
 
-	if (event != CPUFREQ_ADJUST)
+	if (event != CPUFREQ_ADJUST && !info.pending_change)
 		return 0;
 
 	cpufreq_verify_within_limits(policy, policy->cpuinfo.min_freq,
@@ -89,7 +91,8 @@ static void limit_cpu_freqs(uint32_t max_freq)
 
 	info.limited_max_freq = max_freq;
 
-	/* Update new limits */
+	info.pending_change = true;
+
 	get_online_cpus();
 	for_each_online_cpu(cpu)
 	{
@@ -98,6 +101,8 @@ static void limit_cpu_freqs(uint32_t max_freq)
 				KBUILD_MODNAME, cpu, info.limited_max_freq);
 	}
 	put_online_cpus();
+
+	info.pending_change = false;
 }
 
 static void check_temp(struct work_struct *work)
