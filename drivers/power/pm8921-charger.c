@@ -3006,11 +3006,11 @@ static irqreturn_t chg_gone_irq_handler(int irq, void *data)
 	usb_chg_plugged_in = is_usb_chg_plugged_in(chip);
 	chg_gone = pm_chg_get_rt_status(chip, CHG_GONE_IRQ);
 
-	pr_info("chg_gone=%d, usb_valid = %d\n", chg_gone, usb_chg_plugged_in);
-	pr_info("Chg gone fsm_state=%d\n", pm_chg_get_fsm_state(data));
+	pr_debug("chg_gone=%d, usb_valid = %d\n", chg_gone, usb_chg_plugged_in);
+	pr_debug("Chg gone fsm_state=%d\n", pm_chg_get_fsm_state(data));
 
 	if (chg_gone && usb_chg_plugged_in) {
-		pr_info("schedule to check again here\n");
+		pr_debug("schedule to check again here\n");
 		/* schedule to check again later */
 		schedule_delayed_work(&chip->unplug_usbcheck_work,
 				  round_jiffies_relative(msecs_to_jiffies
