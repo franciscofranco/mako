@@ -27,6 +27,7 @@
 #include <linux/input.h>
 #include <linux/workqueue.h>
 #include <linux/slab.h>
+#include <linux/touchboost.h>
 
 /*
  * dbs is used in this file as a shortform for demandbased switching
@@ -737,6 +738,11 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	unsigned int max_load_other_cpu = 0;
 	struct cpufreq_policy *policy;
 	unsigned int j;
+<<<<<<< HEAD
+=======
+	bool boosted = ktime_to_us(ktime_get()) < 
+		(get_input_time() + dbs_tuners_ins.boostpulse_duration);
+>>>>>>> 3ae039c... input: goodbye external vars
 
 	this_dbs_info->freq_lo = 0;
 	policy = this_dbs_info->cur_policy;
