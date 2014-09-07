@@ -134,10 +134,8 @@ inline static bool cpus_cpufreq_work(void)
 
 	for (cpu = 2; cpu < 4; cpu++)
 	{
-		current_freq |= cpufreq_quick_get(cpu);
+		current_freq += cpufreq_quick_get(cpu);
 	}
-
-	pr_info("%s: %d\n", __func__, current_freq);
 
 	return (current_freq >> 1) >= t->cpufreq_unplug_limit;
 }
@@ -214,7 +212,7 @@ static void cpu_smash(void)
 static void __ref decide_hotplug_func(struct work_struct *work)
 {
 	struct hotplug_tunables *t = &tunables;
-	unsigned int cur_load = 0;
+	unsigned long cur_load = 0;
 	unsigned int cpu;
 
 	/*
@@ -252,14 +250,16 @@ static void __ref decide_hotplug_func(struct work_struct *work)
 		if (stats.counter < t->max_load_counter)
 			++stats.counter;
 
-		cpu_revive(cur_load);
+		if (stats.online_cpus <= 2)
+			cpu_revive(cur_load);
 	}
 	else
 	{
 		if (stats.counter)
 			--stats.counter;
 
-		cpu_smash();
+		if (stats.online_cpus > 2)
+			cpu_smash();
 	}
 
 reschedule:
