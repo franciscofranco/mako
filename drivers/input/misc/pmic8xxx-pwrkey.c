@@ -40,6 +40,8 @@ struct pmic8xxx_pwrkey {
 	const struct pm8xxx_pwrkey_platform_data *pdata;
 };
 
+bool pwrkey_pressed = false;
+
 static irqreturn_t pwrkey_press_irq(int irq, void *_pwrkey)
 {
 	struct pmic8xxx_pwrkey *pwrkey = _pwrkey;
@@ -53,6 +55,7 @@ static irqreturn_t pwrkey_press_irq(int irq, void *_pwrkey)
 
 	input_report_key(pwrkey->pwr, KEY_POWER, 1);
 	input_sync(pwrkey->pwr);
+	pwrkey_pressed = true;
 
 	return IRQ_HANDLED;
 }

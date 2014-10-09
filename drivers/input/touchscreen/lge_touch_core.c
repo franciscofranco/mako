@@ -34,6 +34,7 @@
 #include <linux/cpufreq.h>
 #include <linux/hotplug.h>
 #include <linux/cpu.h>
+#include <linux/input/pmic8xxx-pwrkey.h>
 
 #include <linux/input/lge_touch_core.h>
 
@@ -51,13 +52,41 @@ static int is_pressure;
 static int is_width_major;
 static int is_width_minor;
 
-/* extern vars */
-struct lge_touch_data *_ts;
 
 bool suspended = false;
+static bool touch_suspended = false;
+static unsigned int first_x, first_y;
 
 bool doubletap_to_wake = false;
 module_param(doubletap_to_wake, bool, 0664);
+
+unsigned long doubletap_delay = 1000;
+module_param(doubletap_delay, ulong, 0664);
+
+bool doubletap_pwrkey_suspend = false;
+module_param(doubletap_pwrkey_suspend, bool, 0664);
+
+unsigned int doubletap_area = false;
+module_param(doubletap_area, uint, 0664);
+
+unsigned int doubletap_charger = 0;
+module_param(doubletap_charger, uint, 0664);
+
+enum { /* Values for doubletap_area */
+	DT2W_AREA_FULL_WINDOW = 0,
+	DT2W_AREA_BOTTOM,
+	DT2W_AREA_TOP,
+	DT2W_AREA_MIDDLE,
+};
+
+enum { /* Values for doubletap_charger */
+	DT2W_CHARGER_IGNORE = 0,
+	DT2W_CHARGER_ENABLE,
+	DT2W_CHARGER_ONLY,
+};
+
+#define DOUBLETAP_Y_MARGIN 600
+#define DOUBLETAP_X_MARGIN 300
 
 #define LGE_TOUCH_ATTR(_name, _mode, _show, _store)               \
 	struct lge_touch_attribute lge_touch_attr_##_name =       \
@@ -122,6 +151,8 @@ void* get_touch_handle(struct i2c_client *client)
  */
 int touch_i2c_read(struct i2c_client *client, u8 reg, int len, u8 *buf)
 {
+#define LGETOUCH_I2C_RETRY 3
+	int retry = 0;
 	struct i2c_msg msgs[] = {
 		{
 			.addr = client->addr,
@@ -137,13 +168,18 @@ int touch_i2c_read(struct i2c_client *client, u8 reg, int len, u8 *buf)
 		},
 	};
 
-	if (i2c_transfer(client->adapter, msgs, 2) < 0) {
-		if (printk_ratelimit())
-			TOUCH_ERR_MSG("transfer error\n");
-		return -EIO;
-	} else {
-		return 0;
+	for (retry = 0; retry <= LGETOUCH_I2C_RETRY; retry++) {
+		if (i2c_transfer(client->adapter, msgs, 2) == 2)
+			break;
+		if (retry == LGETOUCH_I2C_RETRY) {
+			if (printk_ratelimit())
+				TOUCH_ERR_MSG("transfer error\n");
+			return -EIO;
+		} else
+			msleep(10);
 	}
+
+	return 0;
 }
 
 int touch_i2c_write(struct i2c_client *client, u8 reg, int len, u8 * buf)
@@ -808,18 +844,65 @@ static struct double_tap_to_wake {
 	unsigned long window_time;
 	unsigned long sample_time_ms;
 	unsigned int touches;
+	bool new_touch;
 	struct input_dev *input_device;
 } wake = {
 	.touch_time = 0,
 	.window_time = 0,
 	.sample_time_ms = 100,
 	.touches = 0,
+	.new_touch = false,
 };
 
 void wake_up_display(struct input_dev *input_dev)
 {
 	wake.input_device = input_dev;
 	return;
+}
+
+#define DOUBLETAP_LEFT_BORDER  (DOUBLETAP_X_MARGIN)
+#define DOUBLETAP_RIGHT_BORDER (ts->pdata->caps->x_max - DOUBLETAP_X_MARGIN)
+#define DOUBLETAP_BOTTOM_BORDER   (ts->pdata->caps->y_max - DOUBLETAP_Y_MARGIN)
+bool dt2w_touch_outside_area(struct lge_touch_data *ts) {
+	unsigned int x = ts->ts_data.curr_data[0].x_position;
+	unsigned int y = ts->ts_data.curr_data[0].y_position;
+	switch (doubletap_area) {
+	case DT2W_AREA_FULL_WINDOW:
+		break;
+	case DT2W_AREA_BOTTOM:
+		if (y < DOUBLETAP_BOTTOM_BORDER ||
+		    x < DOUBLETAP_LEFT_BORDER || x > DOUBLETAP_RIGHT_BORDER)
+			return true;
+		break;
+	case DT2W_AREA_TOP:
+		if (y > DOUBLETAP_Y_MARGIN ||
+		    x < DOUBLETAP_LEFT_BORDER || x > DOUBLETAP_RIGHT_BORDER)
+			return true;
+		break;
+	case DT2W_AREA_MIDDLE:
+		if (y < DOUBLETAP_Y_MARGIN || y > DOUBLETAP_BOTTOM_BORDER ||
+		    x < DOUBLETAP_LEFT_BORDER || x > DOUBLETAP_RIGHT_BORDER)
+			return true;
+		break;
+        default:
+                TOUCH_INFO_MSG("doubletap_area: Invalid value - reset.\n");
+                doubletap_area = DT2W_AREA_FULL_WINDOW;
+	}
+	return false;
+}
+
+#define DT2W_RADIUS 175
+static bool touch_is_near(struct lge_touch_data *ts,
+		unsigned int x_prev, unsigned int y_prev)
+{
+	const int maxd2 = DT2W_RADIUS*DT2W_RADIUS;
+	int x = (int)ts->ts_data.curr_data[0].x_position;
+	int y = (int)ts->ts_data.curr_data[0].y_position;
+	int delta_x = x - x_prev;
+	int delta_y = y - y_prev;
+	int d2 = (delta_x * delta_x) + (delta_y * delta_y);
+
+	return (d2 <= maxd2);
 }
 
 /*
@@ -833,37 +916,42 @@ static void touch_work_func(struct work_struct *work)
 	int next_work = 0;
 	int ret;
 
-	if (suspended && doubletap_to_wake)
-	{
-		if (!(wake.touch_time + 2000 >= ktime_to_ms(ktime_get())))
-		{
+	if (!ts->ts_data.curr_data[0].state)
+		wake.new_touch = true;
+
+	if (suspended && doubletap_to_wake && ts->ts_data.curr_data[0].state) {
+		if (dt2w_touch_outside_area(ts)) {
+			wake.touches = 0;
+			goto skip_wake;
+		}
+
+		if (!(wake.touch_time + doubletap_delay >= ktime_to_ms(ktime_get()))) {
 			wake.touch_time = ktime_to_ms(ktime_get());
 			wake.touches = 0;
 		}
-			
+
 		if (!time_is_after_jiffies(
-			wake.window_time + msecs_to_jiffies(wake.sample_time_ms)))
-		{
-			/*
-			 * Don't count as touch when we release the touch input
-			 */
-			if (ts->ts_data.curr_data[0].state != ABS_RELEASE)
+			wake.window_time + msecs_to_jiffies(wake.sample_time_ms))) {
+			if (wake.new_touch) {
 				++wake.touches;
+				wake.new_touch = false;
+			}
 
-			if (wake.touches == 2)
-			{
-				input_event(wake.input_device, EV_KEY, KEY_POWER, 1);
-				input_event(wake.input_device, EV_SYN, 0, 0);
-				msleep(100);
-				input_event(wake.input_device, EV_KEY, KEY_POWER, 0);
-				input_event(wake.input_device, EV_SYN, 0, 0);
-
-				input_sync(wake.input_device);	
+			if (wake.touches >= 2 && touch_is_near(ts, first_x, first_y)) {
+				input_report_key(wake.input_device, KEY_POWER, 1);
+				input_sync(wake.input_device);
+				msleep(80);
+				input_report_key(wake.input_device, KEY_POWER, 0);
+				input_sync(wake.input_device);
+			} else {
+				first_x = ts->ts_data.curr_data[0].x_position;
+				first_y = ts->ts_data.curr_data[0].y_position;
 			}
 		}
 
+skip_wake:
 		wake.window_time = jiffies;
-	} 
+	}
 
 	atomic_dec(&ts->next_work);
 	ts->ts_data.total_num = 0;
@@ -1994,8 +2082,6 @@ static int touch_probe(struct i2c_client *client,
 	touch_psy_init(ts);
 #endif
 
-	_ts = ts;
-
 	return 0;
 
 err_lge_touch_sysfs_init_and_add:
@@ -2060,6 +2146,7 @@ static int touch_remove(struct i2c_client *client)
 #if defined(CONFIG_HAS_EARLYSUSPEND)
 static void touch_early_suspend(struct early_suspend *h)
 {
+	bool keep_touch_on = false;
 	struct lge_touch_data *ts =
 			container_of(h, struct lge_touch_data, early_suspend);
 
@@ -2072,26 +2159,38 @@ static void touch_early_suspend(struct early_suspend *h)
 		return;
 	}
 
-	if (doubletap_to_wake)
-	{
-		enable_irq_wake(ts->client->irq);
+
+	if (doubletap_to_wake) {
+		/* Check charging state */
+		if (doubletap_charger == DT2W_CHARGER_ONLY) {
+			if (ts->charger_type)
+				keep_touch_on = true;
+		} else if (!doubletap_pwrkey_suspend || !pwrkey_pressed) {
+			keep_touch_on = true;
+		} else if (doubletap_charger == DT2W_CHARGER_ENABLE && ts->charger_type) {
+			keep_touch_on = true;
+		}
 	}
-	else 
-	{
+
+	if (keep_touch_on) {
+		enable_irq_wake(ts->client->irq);
+		release_all_ts_event(ts);
+	} else {
 		if (ts->pdata->role->operation_mode == INTERRUPT_MODE)
-                disable_irq(ts->client->irq);
-        else
-                hrtimer_cancel(&ts->timer);
+			disable_irq(ts->client->irq);
+		else
+			hrtimer_cancel(&ts->timer);
 
-        cancel_work_sync(&ts->work);
-        cancel_delayed_work_sync(&ts->work_init);
-        if (ts->pdata->role->key_type == TOUCH_HARD_KEY)
-                cancel_delayed_work_sync(&ts->work_touch_lock);
+		cancel_work_sync(&ts->work);
+		cancel_delayed_work_sync(&ts->work_init);
+		if (ts->pdata->role->key_type == TOUCH_HARD_KEY)
+			cancel_delayed_work_sync(&ts->work_touch_lock);
 
-        release_all_ts_event(ts);
+		release_all_ts_event(ts);
 
-        touch_power_cntl(ts, ts->pdata->role->suspend_pwr);
+		touch_power_cntl(ts, ts->pdata->role->suspend_pwr);
 
+		touch_suspended = true;
 	}
 }
 
@@ -2109,27 +2208,27 @@ static void touch_late_resume(struct early_suspend *h)
 		return;
 	}
 
-	if (doubletap_to_wake)
-	{
+	if (!touch_suspended) {
 		disable_irq_wake(ts->client->irq);
-	}
-	else
-	{
+		release_all_ts_event(ts);
+	} else {
+		touch_suspended = false;
 		touch_power_cntl(ts, ts->pdata->role->resume_pwr);
 
-        if (ts->pdata->role->operation_mode == INTERRUPT_MODE)
-                enable_irq(ts->client->irq);
-        else
-                hrtimer_start(&ts->timer,
-                        ktime_set(0, ts->pdata->role->report_period),
-                                        HRTIMER_MODE_REL);
+		if (ts->pdata->role->operation_mode == INTERRUPT_MODE)
+			enable_irq(ts->client->irq);
+		else
+			hrtimer_start(&ts->timer,
+					ktime_set(0, ts->pdata->role->report_period),
+					HRTIMER_MODE_REL);
 
-        if (ts->pdata->role->resume_pwr == POWER_ON)
-                queue_delayed_work(touch_wq, &ts->work_init,
-                        msecs_to_jiffies(ts->pdata->role->booting_delay));
-        else
-                queue_delayed_work(touch_wq, &ts->work_init, 0);
+		if (ts->pdata->role->resume_pwr == POWER_ON)
+			queue_delayed_work(touch_wq, &ts->work_init,
+					msecs_to_jiffies(ts->pdata->role->booting_delay));
+		else
+			queue_delayed_work(touch_wq, &ts->work_init, 0);
 	}
+	pwrkey_pressed = false;
 }
 #endif
 
@@ -2217,4 +2316,3 @@ void touch_driver_unregister(void)
 	if (touch_wq)
 		destroy_workqueue(touch_wq);
 }
-
